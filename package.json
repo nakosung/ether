@@ -1,0 +1,15 @@
+{
+  "name": "mmm",
+  "dependencies": {
+    "mongojs": "~0.7.5",
+    "async": "~0.2.8",
+    "underscore": "~1.4.4",
+    "coffee-script": "~1.6.2",
+    "express": "~3.2.5",
+    "sockjs": "~0.3.7",
+    "jsondiffpatch": "0.0.7",
+    "redis": "~0.8.3",
+    "cluster": "~0.7.7",
+    "colors": "~0.6.0-1"
+  }
+}

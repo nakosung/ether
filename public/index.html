@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html ng-app="client">
+<head>
+	<title>test</title>		
+	<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">	
+    <!-- jQuery -->
+	<script type="text/javascript" src="lib/jquery-1.9.1.min.js"></script>
+    <!-- Angular.js : load first for ng-cloak -->
+    <script type="text/javascript" src="lib/angular.min.js"></script>
+</head>
+<body>		
+	<div ng-controller="MainCtrl" ng-cloak>
+		<div class="nav-bar">
+			<div class="nav-bar-inner">
+				<span ng-repeat="acc in ['a@a.com','b@b.com']">
+					<button class="btn btn-primary" ng-show="!!rpc.register" ng-click="rpc.register(acc,'1234',{hobby:'playing'})">Register {{acc}}</button>
+		<button class="btn btn-primary" ng-show="!!rpc.login" ng-click="rpc.login(acc,'1234')">login {{acc}}</button>
+				</span>								
+		<button class="btn btn-primary" ng-show="!!rpc.logout" ng-click="rpc.logout()">logout</button>
+		<span ng-show="myself()">{{myself().name}}</span>
+			</div>
+		</div>
+		<div class="hero-unit">
+			<h1>Ether.js</h1>
+			<h2 ng-show="myself()"><span>Hello, {{myself().name}}</span></h2>
+			<span>Compact.Easy.Expandable</span>
+		</div>
+		<div>
+			numConnections : {{stats[0].numClients}}			
+			<li ng-repeat="x in collection('users:online').data">
+				{{x}}				
+			</li>
+		</div>		
+		<div collapse="!myroom()">
+			<h2>{{myroom().title}}</h2>
+			<button class="btn btn-primary" ng-show="!!rpc.leaveRoom" ng-click="rpc.leaveRoom()">Leave</button>
+			<ul>
+				<li ng-repeat="user in myroom().users">
+					{{user}} 
+					<button class="btn" ng-show="!!rpc.kick" ng-click="rpc.kick(user)">Kick!</button>
+				</li>
+			</ul>
+		</div>
+		<div collapse="myroom()">
+			<button class="btn btn-primary" ng-show="!!rpc.createRoom" ng-click="rpc.createRoom({title:'hello'})">Create</button>			
+			<ul>
+				<li ng-repeat="room in collection('rooms').data">
+					{{room.title}} {{room.users.length}}
+					<button class="btn" ng-show="!!rpc.joinRoom" ng-click="rpc.joinRoom(room._id)">Join!</button>
+				</li>
+			</ul>
+		</div>
+		<div collapse="!myself()">						
+			<button class="btn btn-primary" ng-show="!!rpc.addItem" ng-click="rpc.addItem()">Add</button>
+			<ul>
+				<li ng-repeat="x in data">
+					{{x.hello}} {{x.like}}
+					<button class="btn" ng-show="!!rpc.deleteItem" ng-click="rpc.deleteItem(x._id)">
+						Delete
+					</button>
+					<button class="btn" ng-show="!!rpc.likeItem" ng-click="rpc.likeItem(x._id)">
+						Like!
+					</button>
+				</li>
+			</ul>
+		</div>
+	</div>	
+	<!-- underscore.js -->
+	<script type="text/javascript" src="lib/underscore.min.js"></script>
+	<!-- Angular.js -->	
+	<script type="text/javascript" src="lib/angular-ui.min.js"></script>
+	<script type="text/javascript" src="lib/ui-bootstrap-0.3.0.min.js"></script>
+	<script type="text/javascript" src="lib/ui-bootstrap-tpls-0.3.0.js"></script>	
+	
+	<!-- CRITICAL CODES -->
+	<!-- sock.js -->
+	<script type="text/javascript" src="lib/sockjs-0.3.min.js"></script>	
+	<script type="text/javascript" src="lib/jsondiffpatch.min.js"></script>
+	<!-- Our client source code -->
+	<script type="text/javascript" src="lib/ether.js"></script>
+	<script type="text/javascript" src="lib/client.js"></script>
+</body>
+</html>
+
