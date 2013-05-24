@@ -8,4 +8,4 @@ Installation
 
 1. make sure *redis* is running to support clusters and *mongodb* is online for backend db.
 1. npm i
-1. coffee main.coffee 
+1. node index.js
