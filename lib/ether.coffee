@@ -108,9 +108,9 @@ module.exports = (plugins,opts) ->
 		server.id = opts.id
 		plugins.map (x) -> server.use x, opts?[x]
 
-		process.on 'SIGUSR2', ->
-			server.exit ->
-				process.kill process.pid, 'SIGUSR2'
+		# process.on 'SIGUSR2', ->
+		# 	server.exit ->
+		# 		process.kill process.pid, 'SIGUSR2'
 
 		process.on 'SIGINT', ->
 			server.exit ->

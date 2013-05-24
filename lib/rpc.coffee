@@ -26,13 +26,13 @@ module.exports = (server) ->
 
 		client.rpc = {}
 
-		walk = (rpc,parent=[]) ->
+		walk = (rpc,prefix='',parent=[]) ->
 			for k,v of rpc
 				if is_permitted(client,v)
-					if _.isFunction(v)
-						client.rpc[k] = fn:v,v:[parent...,v]
+					if _.isFunction(v) and k != '__check__' 
+						client.rpc[prefix+k] = fn:v,v:[parent...,v]
 					else if _.isObject(v)
-						walk(v,[parent...,v])
+						walk(v,prefix+k+":",[parent...,v])
 
 		walk(rpc)
 
