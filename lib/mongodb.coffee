@@ -36,6 +36,12 @@ module.exports = (server,opt) ->
 
 					@org.find(args...)
 
+				findOne : (args...) ->
+					@read()				
+
+					@org.findOne(args...)
+
+
 				# meteor like helper
 				findAll : (args...) ->
 					cb = last_fn(args)

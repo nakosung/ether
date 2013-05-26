@@ -9,88 +9,88 @@ opts =
 
 server = ether(plugins,opts)
 
+article_test = (col,root) ->
+	server.publish 'test', (client,cb) -> col.findAll({},cb)	
+	root.addItem = (client,cb) -> 
+		col.save {hello:'world'}, cb
+	root.deleteItem = (client,id,cb) -> 
+		col.remove {_id:db.ObjectId(id)},cb
+	root.likeItem = (client,id,cb) -> 
+		col.update {_id:db.ObjectId(id)},$inc:like:1, cb
+
+#server?.use 'room'
+
 if server
-	{db,rpc} = server		
-	
-	mycol = db.collection 'mycollection'	
+	{db,rpc,deps} = server
 
-	server.publish 'test', (client,cb) -> mycol.findAll({},cb)	
-	rpc.auth.addItem = (client,cb) -> mycol.save {hello:'world'}, cb
-	rpc.auth.deleteItem = (client,id,cb) -> mycol.remove {_id:db.ObjectId(id)},cb
-	rpc.auth.likeItem = (client,id,cb) -> mycol.update {_id:db.ObjectId(id)},$inc:like:1, cb
+	hooks = require 'hooks'
+	class Entity 
+		constructor : (@name,@col) ->
+		create : (doc,cb) ->
+			@col.save doc, cb
+		pre : (e,fn) ->
+			unless @[e].org?
+				org = @[e]
+				proxy = (args...) =>
+					fn = =>
+						org.call @, args...
+					proxy.pre fn, args... 
+				proxy.org = org
+				proxy.pre = fn
+				@[e] = proxy
+				
 
-	rooms = db.collection 'rooms'
 
-	server.publish 'rooms', (client,cb) -> rooms.findAll({},cb)
+	Room = new Entity 'room', db.collection('room')
+	Room.pre 'create', (next,doc,cb) ->
+		console.log 'create'
+		next(doc,cb)
 
-	# cleanup
-	rooms.remove {}
+	member_of = (G) ->
+		server.ClientClass::set_group = (g) ->
+			@[group] = g
+			deps.write @
 
-	server.publish 'myroom', (client,cb) ->
-		server.deps.read client
-		if client.room?			
-			rooms.findAll {_id:client.room,users:client.auth}, (err,docs) ->								
-				if docs.length == 0										
-					rpc.auth.room.leaveRoom.call rpc, client, ->
-				cb(err,docs)
-		else
-			cb(null,[])
-
-	server.on 'client:join', (client) ->
-		client.on 'logout', ->						
-			if client.room?				
-				rpc.auth.room.leaveRoom.call rpc, client, ->
-
-	set = (group,collection) ->
-		group_owner = group + "_owner"
-		joined = 
-			__check__ : (client) -> client[group]?
-			owner :
-				__check__ : (client) -> client[group_owner]
-				kick : (client,opp,cb) ->				
-					collection.update {_id:client[group],owner:client.auth}, {$pull:users:db.ObjectId(opp)}, (err,result) ->			
-						cb(err,result)
-			leave : (client,cb) ->
-				@assert_fn cb
-				g = client[group]
-				client[group] = undefined
-				server.deps.write client		
-				async.series [
-					(cb) -> collection.update {_id:g}, {$pull:users:client.auth}, cb
-					(cb) -> collection.remove {_id:g,users:[]}, cb
-				], cb
-		not_joined = 
-			__check__ : (client) -> not client[group]?
-			create : (client,opt,cb) ->		
-				@assert_fn cb
-				doc = title:'unnamed'		
-				_.extend doc, opt		
-				doc.owner = client.auth
-				doc.users = [client.auth]
-				collection.save doc, (err,doc) ->			
-					return cb(err) if err			
-					client[group] = doc._id
-					client[group_owner] = true
-					server.deps.write client
-					cb()
-			join : (client,g,cb) ->		
-				@assert_fn cb
-				g = db.ObjectId(g)
-				collection.update {_id:g}, {$push:{users:client.auth}}, (err,result) ->
-					return cb(err) if err			
-					if result == 1
-						client[group] = g
-						server.deps.write client
+		group = G.name
+		col = G.col
+		actions = 
+			create : (opt,cb) ->
+				doc = {}
+				_.extend doc, opt
+				doc.users = [@auth]
+				async.waterfall [
+					(cb) -> G.create doc, cb
+					(doc,cb) => 
+						@set_group doc._id
 						cb()
-					else
-						cb('not found')
-		o = {}
-		o[group] = 
-			in:joined
-			out:not_joined
-		o
+				], cb
+			leave : (cb) ->
+				async.series [
+					(cb) => col.update {_id:@[group]}, {$pull:users:@auth}, cb
+					(cb) => col.remove {_id:@[group],users:[]}, cb
+					(cb) =>
+						@set_group undefined
+						deps.write @
+						cb()
+				], cb
+		server.on 'client:join', (client) ->
+			client.on 'login', ->
+				console.log client.auth
 
-	_.extend rpc.auth, set('room',rooms)
-		
-			
+		bind = (fn) -> (client,args...) -> fn.call client, args...
+		rpc.auth[group] = 
+			in:
+				__check__ : (client) -> client[group]?
+				leave : bind actions.leave
+			out:
+				__check__ : (client) -> not client[group]?
+				create : bind actions.create
+					
+
+	member_of Room
+	
+	article_test (db.collection 'mycollection'), rpc.auth
+
 	server.listen()
+
+	

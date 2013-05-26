@@ -17,6 +17,11 @@ module.exports = (server) ->
 		@auth = auth
 		server.deps.write @
 
+		if auth?
+			@emit 'login'
+		else
+			@emit 'logout' 
+
 		cb()
 
 	rpc = @rpc
@@ -55,9 +60,6 @@ module.exports = (server) ->
 		async.series [
 			(cb) -> users.update {_id:client.auth}, {$unset:online:1}, cb
 			(cb) -> client.set_auth undefined, cb
-			(cb) -> 
-				client.emit 'logout' 
-				cb()
 		], (err,result) ->			
 			cb(err,result)			
 
