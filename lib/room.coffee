@@ -35,9 +35,7 @@ module.exports = (server) ->
 	col.remove {}		
 
 	joined = (client,room,cb) ->
-		throw new Error('function req') unless _.isFunction(cb)
-
-		console.log "JOINED".red.bold
+		throw new Error('function req') unless _.isFunction(cb)		
 
 		auth = client.auth
 
