@@ -72,7 +72,7 @@ ether.factory 'collection', (sockjs,$rootScope) ->
 
 				$rootScope.$broadcast "collection:update", @
 		init : -> sockjs.send req:channel:@name
-		uninit : -> @data.splice(0,@data.length)
+		uninit : -> @data = undefined
 
 	(name) ->
 		unless collections[name]
