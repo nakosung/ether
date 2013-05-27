@@ -1,164 +1,119 @@
 _ = require 'underscore'
 async = require 'async'
 
+expect = (error,cb,args...) ->
+	(err,result...) ->		
+		if err
+			cb(err)
+		else if JSON.stringify(args) == JSON.stringify(result)
+			cb()
+		else
+			cb(err)
+
 module.exports = (server) ->
 	# only auth. users can access to rooms :)
 	server.use 'accounts'
 
-	{db,rpc,deps} = server		
+	{db,rpc,deps} = server
 
 	rooms = db.collection 'rooms'
 
 	server.publish 'rooms', (client,cb) -> rooms.findAll({},cb)
+	server.publish 'myroom', (client,cb) ->				
+		deps.read client
+		if client.room
+			rooms.findOne {_id:client.room}, (err,doc) -> cb(err,[doc])
+		else
+			cb(null,[])
 
 	# cleanup
-	rooms.remove {}
-	#db.users.remove {}
+	rooms.remove {}		
 
-	set = (group,col,root) ->
-		group_owner = group + "_owner"
+	joined = (client,room,cb) ->
+		throw new Error('function req') unless _.isFunction(cb)
 
-		class DbAccessor
-			constructor : (member) ->
-				@member = (x) ->
-					r = {}
-					r[member] = x
-					r
-				@id = (g,x) ->
-					x ?= {}
-					x._id = g
-					x
-			expect_one : (cb) ->
-				(err,result) ->
-					if result == 1
-						cb()
-					else
-						cb(err or 'invalid:'+result)
+		auth = client.auth
 
-		class Collection extends DbAccessor
-			constructor : (@col,member) ->
-				super member
+		client.room = room
+		deps.write client
 
-			add : (g,m,cb) ->
-				@col.update @id(g,@member($ne:m)), {$push:@member(m)}, @expect_one(cb)
-			remove : (g,m,cb) ->
-				@col.update @id(g,@member(m)), {$pull:@member(m)}, @expect_one(cb)
+		fn = ->		
+			client.room = undefined
+			deps.write client				
 
-		class Single extends DbAccessor
-			constructor : (@col,member) ->
-				super member
-			add : (g,m,cb) ->
-				@col.update @id(g,@member(null)), {$set:@member(m)}, @expect_one(cb)
-			remove : (g,m,cb) ->
-				@col.update @id(g,@member(m)), {$unset:@member(1)}, @expect_one(cb)
+			async.series [
+				(cb) -> rooms.update {_id:room,users:auth}, {$pull:{users:auth},$inc:{tickets:1}}, expect("couldn't join",cb,1)
+				(cb) -> rooms.remove {_id:room,users:[]}, cb			
+			], -> 
 
-		class ClientLocal
-			constructor : (@member) ->
-			add : (g,m,cb) ->
-				return cb('invalid.client local'+g[@member]) if g[@member]
-
-				g[@member] = m
-				deps.write g
-				cb()
-
-			remove : (g,m,cb) ->
-				return cb('invalid') unless g[@member]
-				
-				g[@member] = undefined
-				deps.write g
-				cb()
-
-		class RelationshipMux
-			constructor : ->
-				@forwards = []
-				@backwards = []
-
-			forward : (R) ->
-				@forwards.push R
-
-			backward : (R) ->
-				@backwards.push R
-
-			add : (g,m,cb) ->
-				async.parallel [
-					(cb) => async.parallel (@forwards.map (x) -> (cb) -> x.add g,m,cb), cb
-					(cb) => async.parallel (@backwards.map (x) -> (cb) -> x.add m,g,cb), cb
-				], cb
-			remove : (g,m,cb) ->
-				async.parallel [
-					(cb) => async.parallel (@forwards.map (x) -> (cb) -> x.remove g,m,cb), cb
-					(cb) => async.parallel (@backwards.map (x) -> (cb) -> x.remove m,g,cb), cb
-				], cb
-
-		class Transform
-			constructor : (@R,opts) ->
-				@g = opts?.g or (x) -> x
-				@m = opts?.m or (x) -> x
-
-			add : (g,m,cb) ->
-				@R.add @g(g), @m(m), cb
-			remove : (g,m,cb) ->
-				@R.remove @g(g), @m(m), cb
-
-		G = new Collection rooms,'users' 
-	#	M = new Single db.users,'room'
-		C = new ClientLocal 'room_at'
-		R = new RelationshipMux
 		
-		R.forward new Transform G, m:(x) -> x.auth
-	#	R.backward new Transform M, g:(x) -> x.auth
-		R.backward C
+		async.series [
+			(cb) -> client.acquireToken (client.tokenAlias 'room', 'room:' + auth), fn, cb
+			(cb) -> client.tokenDeps (client.tokenAlias 'room'), (client.tokenAlias 'auth'), cb
+		], cb
 
-		OM = new Single rooms, 'owner'
-		OC = new ClientLocal 'owns_room'
-		OR = new RelationshipMux
+	becameOwner = (client, cb) ->
+		g = client.room
+		auth = client.auth
 
-		OR.forward new Transform OM, m:(x) -> x.auth
-		OR.backward OC
+		client.is_owner = true		
+		deps.write client
 
-		server.publish "my#{group}", (client,cb) ->
-			deps.read client
-			if client.room_at?
-				G.col.findAll G.id(client.room_at,users:client.auth), (err,docs) ->
-					cb(err,docs)
-					unless docs.length
-						R.remove client.room_at, client, -> 
+		fn = (taker) ->	
+			client.is_owner = undefined
+			deps.write client
 
-			else
-				cb(null,[])
+			rooms.update {_id:g}, {$unset:{owner:1}}, -> 
+		
+		async.series [
+			(cb) -> client.acquireToken (client.tokenAlias 'room_owner', 'room_owner:' + g), fn, cb
+			(cb) -> client.tokenDeps (client.tokenAlias 'room_owner'), (client.tokenAlias 'room'), cb
+		], cb		
 
-		server.on 'client:join', (client) ->
-			client.once 'logout', ->
-				R.remove client.room_at, client, ->
+	rpc.auth.room =
+		in :
+			__check__ : (client) -> client.room?
+
+			owner : 
+				__check__ : (client) -> client.is_owner
+
+				kick : (client,opp,cb) ->					
+					return cb("can't kick yourself") if String(opp) == String(client.auth)
+					server.destroyToken 'room:' + db.ObjectId(opp), cb
 			
-		root.in = 
-			__check__ : (client) -> client.room_at?
-			# owner :
-			# 	__check__ : (client) -> client.owns_room?
-			# 	kick : (client,opp,cb) ->	
-			# 		client[group].kick(opp,cb)
-			leave : (client,cb) ->
-				R.remove client.room_at, client, cb
-		root.out = 
-			__check__ : (client) -> not client.room_at?
-			create : (client,opt,cb) ->		
-				return cb('already in') if client.room_at? 
+			leave : (client,cb) -> 
+				server.destroyToken (client.tokenAlias 'room'), cb				
 
-				doc = title:'unnamed'		
-				_.extend doc, opt		
-				# doc.owner = @auth
-				col.save doc, (err,doc) =>			
-					return cb(err) if err			
-					@at = doc._id
-					# @is_owner = true
-					R.add doc._id, client, (err,result) =>
-						console.log "********".bold
-						console.log err,result
-						console.log client.room_at
-						cb(err,result)
+			claimOwner : (client,cb) ->
+				g = client.room
+				auth = client.auth
+				async.series [
+					(cb) -> rooms.update {_id:g,users:auth,owner:null}, {$set:owner:auth}, expect('claim failed',cb,1)
+					(cb) -> becameOwner client, cb
+				], cb
+		out :
+			__check__ : (client) -> not client.room?
 
-			join : (client,g,cb) ->		
-				R.add db.ObjectId(g),client, cb
-				
+			create : (client,opt,cb) -> 
+				auth = client.auth				
+				doc = _.extend (_.extend {tickets:16}, opt), 
+					owner : auth
+					users : [auth]					
 
-	set('room',rooms,rpc.auth.room = {})
+				# owner takes one seat
+				return cb('invalid tickets') if --doc.tickets < 0
+
+				async.waterfall [
+					(cb) -> rooms.save doc, cb
+					(doc,cb) -> joined client, doc._id, cb
+					(a...,cb) -> becameOwner client, cb
+				], cb				
+
+			join : (client,g,cb) -> 
+				g = db.ObjectId(g)
+
+				async.series [
+					(cb) -> server.destroyToken (client.tokenAlias 'room'), cb
+					(cb) -> rooms.update {_id:g,tickets:$gt:0}, {$push:{users:client.auth},$inc:tickets:-1}, expect('no vacancy or invalid req',cb,1)
+					(cb) -> joined client, g, cb
+				], cb

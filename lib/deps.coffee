@@ -3,18 +3,16 @@ _ = require 'underscore'
 module.exports = (server) ->
 	class Deps
 		constructor : ->		
-
-		watch : (fn) ->			
+	
+		watch : (fn,watching) ->			
 			deps = @
 
 			class Watcher
-				constructor : (@fn) ->								
-					@watching = []
-
-					watchFn = (array) =>
+				constructor : (fn,@watching = []) ->								
+					watchFn = (array) =>						
 						if _.intersection(@watching,array).length
-							process.nextTick =>
-								@fn()
+							process.nextTick =>								
+								fn()
 
 					server.on 'dep:update', watchFn
 
@@ -35,7 +33,7 @@ module.exports = (server) ->
 
 					@watching = keys
 
-			new Watcher(fn)
+			new Watcher(fn,watching)
 
 		read : (dep) => 			
 			dep = String(dep)
@@ -48,7 +46,8 @@ module.exports = (server) ->
 				process.nextTick =>
 					server.emit 'dep:update', @written
 					@written = undefined
-			@written.push dep
+
+			@written.push dep if @written.indexOf(dep) < 0
 
 	server.deps = new Deps()
 	server.bridge? 'dep:update'

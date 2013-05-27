@@ -7,80 +7,73 @@ module.exports = (server) ->
 	server.use './rpc'
 	server.use './mongodb'
 	server.use 'deps'
+	server.use 'token'
 
 	db = server.db
 	users = db.collection 'users'
 
 	users.org.ensureIndex {name:1}, {unique:true,dropDups:true}	
 
-	server.ClientClass::set_auth = (auth,cb) ->
-		@auth = auth
-		server.deps.write @
-
-		if auth?
-			@emit 'login'
-		else
-			@emit 'logout' 
-
-		cb()
-
 	rpc = @rpc
 
-	rpc.auth = __check__ : (client) -> client.auth?
-	rpc.noauth = __check__ : (client) -> not client.auth?
-	
-	## REGISTRATION
-	rpc.noauth.register = (client,name,pwd,opt,cb) ->		
-		@assert_fn cb
+	connected = (client,auth,cb) ->
+		client.auth = auth
+		server.deps.write client
 
-		doc = opt
-		_.extend doc,
-			name : name
-			pwd : pwd		
-		users.save doc, cb
+		fn = ->
+			client.emit 'logout'
+			client.auth = undefined
+			server.deps.write client
 
-	## LOGIN	
-	rpc.noauth.login = (client,name,pwd,cb) -> 
-		@assert_fn cb
-		
-		q = 
-			query:{name:name,pwd:pwd}
-			update:{$set:online:String(client),heartbeat:Date.now()}
-
-		users.findAndModify q, (err,doc) ->			
-			if doc
-				client.set_auth(doc._id,cb)		
-			else
-				cb('none')	
-
-	## LOGOUT
-	rpc.auth.logout = (client,cb) ->
-		@assert_fn cb
+			users.update {_id:auth,online:String(client)}, {$unset:online:1}, ->
 
 		async.series [
-			(cb) -> users.update {_id:client.auth}, {$unset:online:1}, cb
-			(cb) -> client.set_auth undefined, cb
-		], (err,result) ->			
-			cb(err,result)			
+			(cb) -> client.acquireToken (client.tokenAlias 'auth', 'user:'+auth), fn, cb			
+			(cb) -> 				
+				client.emit 'login'
+				cb()
+		], cb
 
-	server.on 'client:join', (client) ->
-		client.once 'close', ->						
-			if client.auth?				
-				rpc.auth.logout.call rpc, client, ->					
+	rpc.auth = 
+		__check__ : (client) -> client.auth?
 
+		## LOGOUT
+		logout : (client,cb) ->
+			@assert_fn cb
+
+			server.destroyToken (client.tokenAlias 'auth')			
+	rpc.noauth = 
+		__check__ : (client) -> not client.auth?
+
+		## REGISTRATION
+		register : (client,name,pwd,opt,cb) ->		
+			@assert_fn cb
+
+			doc = opt
+			_.extend doc,
+				name : name
+				pwd : pwd		
+			users.save doc, cb
+
+		## LOGIN	
+		login : (client,name,pwd,cb) -> 
+			@assert_fn cb
+			
+			q = 
+				query:{name:name,pwd:pwd}
+				update:{$set:online:String(client),heartbeat:Date.now()}
+
+			async.waterfall [
+				(cb) -> users.findAndModify q, cb
+				(doc,args...,cb) -> connected client, doc._id, cb
+			], cb
+	
 	server.publish 'users:online', (client,cb) -> users.findAll({online:$ne:null},cb)	
 	server.publish 'users:self', (client,cb) -> 
 		server.deps.read client
-		users.findAll {_id:client.auth,online:String(client)}, (err,docs) ->		
-			# connected by other peer	
-			if docs.length == 0 and client.auth?				
-				client.set_auth undefined, ->
-					cb(err,docs)
-			else
-				cb(err,docs)
+		users.findOne {_id:client.auth,online:String(client)}, (err,doc) -> cb(err,[doc])			
 
-	server.on 'client:data', (client,data) =>
-		return unless data.heartbeat?
+	server.on 'client:data', (client,data) =>		
 		if client.auth?
 			users.update {_id:client.auth}, {$set:heartbeat:Date.now()}
 

@@ -34,6 +34,7 @@
 		<div collapse="!myroom()">
 			<h2>{{myroom().title}}</h2>
 			<button class="btn btn-primary" ng-show="!!rpc.auth.room.in.leave" ng-click="rpc.auth.room.in.leave()">Leave</button>
+			<div>owner : {{myroom().owner}}</div>
 			<ul>
 				<li ng-repeat="user in myroom().users">
 					{{user}} 

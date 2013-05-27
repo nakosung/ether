@@ -50,7 +50,7 @@ module.exports = (server) ->
 			else
 				cb('fail')
 
-		sync : ->				
+		sync : ->						
 			if @syncing
 				@queued = true
 			else
