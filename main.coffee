@@ -19,6 +19,7 @@ article_test = (col,root) ->
 		col.update {_id:db.ObjectId(id)},$inc:like:1, cb
 
 server?.use 'room'
+server?.use 'rsvp'
 
 if server
 	{db,rpc,deps} = server

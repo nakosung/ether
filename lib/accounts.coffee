@@ -65,13 +65,15 @@ module.exports = (server) ->
 
 			async.waterfall [
 				(cb) -> users.findAndModify q, cb
-				(doc,args...,cb) -> connected client, doc._id, cb
+				(doc,args...,cb) -> 
+					return cb('invalid login') unless doc
+					connected client, doc._id, cb
 			], cb
 	
-	server.publishDocs 'users:online', (client,cb) -> users.findAll({online:$ne:null},cb)
+	server.publishDocs 'users:online', (client,cb) -> users.findAll({online:$ne:null},{name:true},cb)
 	server.publishDoc 'users:self', (client,cb) -> 
 		server.deps.read client
-		users.findOne {_id:client.auth,online:String(client)}, cb
+		users.findOne {_id:client.auth,online:String(client)}, {pwd:false,heartbeat:false}, cb
 
 	server.on 'client:data', (client,data) =>		
 		if client.auth?

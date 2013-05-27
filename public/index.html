@@ -27,6 +27,7 @@
 		</div>
 		<div>
 			numConnections : {{stats[0].numClients}}			
+			sync-stats : {{collection('sync:stat').data}}
 			<li ng-repeat="x in collection('users:online').data">
 				{{x}}				
 			</li>

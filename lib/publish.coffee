@@ -7,6 +7,13 @@ module.exports = (server) ->
 
 	server.use 'deps'	
 
+	deps = server.deps
+
+	stats =
+		sent:
+			json:0
+
+
 	class Source extends events.EventEmitter
 		constructor : (@fn) ->
 
@@ -64,7 +71,8 @@ module.exports = (server) ->
 						if diff
 							#console.log "diffing", @name, "D".green.bold, curr, old, diff
 							#diff = curr
-							@snapshot = curr
+							@snapshot = JSON.parse JSON.stringify curr
+							stats.sent.json++
 							@client.send channel:@name, diff:diff
 						
 					if @queued
@@ -115,3 +123,8 @@ module.exports = (server) ->
 		pubs[pub]?.emit 'update'
 
 
+	server.publish 'sync:stat', (client,cb) ->
+		deps.read '5sec'
+		cb null, stats
+
+	setInterval (-> deps.write '5sec'), 5000
