@@ -10,7 +10,7 @@ opts =
 server = ether(plugins,opts)
 
 article_test = (col,root) ->
-	server.publish 'test', (client,cb) -> col.findAll({},cb)	
+	server.publishDocs 'test', (client,cb) -> col.findAll({},cb)	
 	root.addItem = (client,cb) -> 
 		col.save {hello:'world'}, cb
 	root.deleteItem = (client,id,cb) -> 

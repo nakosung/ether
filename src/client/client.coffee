@@ -5,7 +5,8 @@ app.controller 'MainCtrl', ($scope,collection,rpc) ->
 	$scope.data = collection('test').data
 	$scope.stats = collection('stats').data	
 	$scope.clients = collection('clients').data	
-	$scope.myself = -> collection('users:self').data?[0]
-	$scope.myroom = -> collection('myroom').data?[0]
+	$scope.myself = -> collection('users:self').data
+	$scope.myroom = -> collection('myroom').data
+	window.r = $scope.myroom
 	$scope.rpc = rpc	
-	setInterval (->	rpc.auth?.room?.in?.claimOwner() unless $scope.myroom()?.owner?), 1000
+	setInterval (->	rpc.room?.in?.claimOwner() unless $scope.myroom()?.owner?), 1000

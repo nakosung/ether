@@ -3,7 +3,7 @@ module.exports = (server) ->
 
 	server.publish 'stats', (client) -> 
 		server.deps.read 'stats'
-		[numClients:server.clients.length]
+		numClients:server.clients.length
 
 	server.on 'client:join', -> server.deps.write 'stats'
 	server.on 'client:leave', -> server.deps.write 'stats'

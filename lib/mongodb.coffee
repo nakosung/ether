@@ -8,6 +8,22 @@ last_fn = (args) ->
 module.exports = (server,opt) ->	
 	server.use 'deps'
 
+	server.publishDocs = (pub,fn) ->
+		server.publish pub, (client,cb) ->
+			fn client,(err,docs) ->
+				return cb(err) if err
+
+				o = {}
+				for doc in docs
+					o[doc._id] = doc
+				cb(null,o)
+	server.publishDoc = (pub,fn) ->
+		server.publish pub, (client,cb) ->
+			fn client,(err,doc) ->				
+				return cb(err) if err
+
+				cb(null,doc or {})
+
 	class Instance
 		constructor : ->
 			server.db = @	

@@ -16,44 +16,51 @@ module.exports = (server) ->
 
 	{db,rpc,deps} = server
 
-	rooms = db.collection 'rooms'
+	GROUP_NAME = 'room'
+	GROUP_OWNER = GROUP_NAME + '_owner'
+	CLIENT_CACHE = GROUP_NAME
+	pluralize = (x) -> x + "s"
 
-	server.publish 'rooms', (client,cb) -> rooms.findAll({},cb)
-	server.publish 'myroom', (client,cb) ->				
+	col = db.collection pluralize GROUP_NAME
+
+	server.publishDocs (pluralize GROUP_NAME), (client,cb) -> col.findAll({},cb)
+	server.publishDoc 'my' + GROUP_NAME, (client,cb) ->						
 		deps.read client
-		if client.room
-			rooms.findOne {_id:client.room}, (err,doc) -> cb(err,[doc])
+		if client[CLIENT_CACHE]
+			col.findOne {_id:client[CLIENT_CACHE]}, cb
 		else
-			cb(null,[])
+			cb()
 
 	# cleanup
-	rooms.remove {}		
+	col.remove {}		
 
 	joined = (client,room,cb) ->
 		throw new Error('function req') unless _.isFunction(cb)
 
+		console.log "JOINED".red.bold
+
 		auth = client.auth
 
-		client.room = room
+		client[CLIENT_CACHE] = room
 		deps.write client
 
 		fn = ->		
-			client.room = undefined
+			client[CLIENT_CACHE] = undefined
 			deps.write client				
 
 			async.series [
-				(cb) -> rooms.update {_id:room,users:auth}, {$pull:{users:auth},$inc:{tickets:1}}, expect("couldn't join",cb,1)
-				(cb) -> rooms.remove {_id:room,users:[]}, cb			
+				(cb) -> col.update {_id:room,users:auth}, {$pull:{users:auth},$inc:{tickets:1}}, expect("couldn't join",cb,1)
+				(cb) -> col.remove {_id:room,users:[]}, cb			
 			], -> 
 
 		
 		async.series [
-			(cb) -> client.acquireToken (client.tokenAlias 'room', 'room:' + auth), fn, cb
-			(cb) -> client.tokenDeps (client.tokenAlias 'room'), (client.tokenAlias 'auth'), cb
+			(cb) -> client.acquireToken (client.tokenAlias GROUP_NAME, GROUP_NAME + ':' + auth), fn, cb
+			(cb) -> client.tokenDeps (client.tokenAlias GROUP_NAME), (client.tokenAlias 'auth'), cb
 		], cb
 
 	becameOwner = (client, cb) ->
-		g = client.room
+		g = client[CLIENT_CACHE]
 		auth = client.auth
 
 		client.is_owner = true		
@@ -63,39 +70,45 @@ module.exports = (server) ->
 			client.is_owner = undefined
 			deps.write client
 
-			rooms.update {_id:g}, {$unset:{owner:1}}, -> 
+			col.update {_id:g}, {$unset:{owner:1}}, -> 
 		
 		async.series [
-			(cb) -> client.acquireToken (client.tokenAlias 'room_owner', 'room_owner:' + g), fn, cb
-			(cb) -> client.tokenDeps (client.tokenAlias 'room_owner'), (client.tokenAlias 'room'), cb
+			(cb) -> client.acquireToken (client.tokenAlias GROUP_OWNER, GROUP_OWNER + ':' + g), fn, cb
+			(cb) -> client.tokenDeps (client.tokenAlias GROUP_OWNER), (client.tokenAlias GROUP_NAME), cb
 		], cb		
 
-	rpc.auth.room =
+	rpc.room =
+		__check__ : (client) -> rpc.auth.__check__(client)
+
 		in :
-			__check__ : (client) -> client.room?
+			__check__ : (client) -> client[CLIENT_CACHE]?
 
 			owner : 
 				__check__ : (client) -> client.is_owner
 
 				kick : (client,opp,cb) ->					
+					@assert_fn(cb)
 					return cb("can't kick yourself") if String(opp) == String(client.auth)
 					server.destroyToken 'room:' + db.ObjectId(opp), cb
 			
 			leave : (client,cb) -> 
-				server.destroyToken (client.tokenAlias 'room'), cb				
+				@assert_fn(cb)
+				server.destroyToken (client.tokenAlias GROUP_NAME), cb				
 
 			claimOwner : (client,cb) ->
-				g = client.room
+				@assert_fn(cb)
+				g = client[CLIENT_CACHE]
 				auth = client.auth
 				async.series [
-					(cb) -> rooms.update {_id:g,users:auth,owner:null}, {$set:owner:auth}, expect('claim failed',cb,1)
+					(cb) -> col.update {_id:g,users:auth,owner:null}, {$set:owner:auth}, expect('claim failed',cb,1)
 					(cb) -> becameOwner client, cb
 				], cb
 		out :
-			__check__ : (client) -> not client.room?
+			__check__ : (client) -> not client[CLIENT_CACHE]?
 
 			create : (client,opt,cb) -> 
-				auth = client.auth				
+				@assert_fn(cb)
+				auth = client.auth
 				doc = _.extend (_.extend {tickets:16}, opt), 
 					owner : auth
 					users : [auth]					
@@ -104,16 +117,18 @@ module.exports = (server) ->
 				return cb('invalid tickets') if --doc.tickets < 0
 
 				async.waterfall [
-					(cb) -> rooms.save doc, cb
+					(cb) -> col.save doc, cb
 					(doc,cb) -> joined client, doc._id, cb
 					(a...,cb) -> becameOwner client, cb
 				], cb				
 
 			join : (client,g,cb) -> 
+				@assert_fn(cb)
 				g = db.ObjectId(g)
+				auth = client.auth
 
 				async.series [
-					(cb) -> server.destroyToken (client.tokenAlias 'room'), cb
-					(cb) -> rooms.update {_id:g,tickets:$gt:0}, {$push:{users:client.auth},$inc:tickets:-1}, expect('no vacancy or invalid req',cb,1)
+					(cb) -> server.destroyToken (client.tokenAlias GROUP_NAME), cb
+					(cb) -> col.update {_id:g,tickets:$gt:0}, {$push:{users:auth},$inc:tickets:-1}, expect('no vacancy or invalid req',cb,1)
 					(cb) -> joined client, g, cb
 				], cb

@@ -61,11 +61,14 @@ ether.factory 'collection', (sockjs,$rootScope) ->
 			$rootScope.$on 'sockjs.online', => @init()
 			$rootScope.$on 'sockjs.offline', => @uninit()			
 
-			@data = []
+			@data = undefined
 
-			$rootScope.$on 'sockjs.json', (e,json) =>										
+			$rootScope.$on 'sockjs.json', (e,json) =>
 				return unless json.channel == @name
-				jsondiffpatch.patch @data, json.diff
+				@data ?= {}
+				jsondiffpatch.patch @data, json.diff				
+				if _.keys(@data).length == 0
+					@data = undefined								
 
 				$rootScope.$broadcast "collection:update", @
 		init : -> sockjs.send req:channel:@name
@@ -95,7 +98,7 @@ ether.factory 'rpc', (sockjs,$rootScope,collection) ->
 	$rootScope.$on 'collection:update', (e,collection) ->
 		if collection == rpc_dir
 			delete instance[k] for k of instance
-			for method in collection.data
+			for method,v of collection.data
 				do (method) ->					
 					fn = instance[method] = (args...,cb) ->
 						trid = null

@@ -33,21 +33,21 @@
 		</div>		
 		<div collapse="!myroom()">
 			<h2>{{myroom().title}}</h2>
-			<button class="btn btn-primary" ng-show="!!rpc.auth.room.in.leave" ng-click="rpc.auth.room.in.leave()">Leave</button>
+			<button class="btn btn-primary" ng-show="!!rpc.room.in.leave" ng-click="rpc.room.in.leave()">Leave</button>
 			<div>owner : {{myroom().owner}}</div>
 			<ul>
 				<li ng-repeat="user in myroom().users">
 					{{user}} 
-					<button class="btn" ng-show="!!rpc.auth.room.in.owner.kick" ng-click="rpc.auth.room.in.owner.kick(user)">Kick!</button>
+					<button class="btn" ng-show="!!rpc.room.in.owner.kick" ng-click="rpc.room.in.owner.kick(user)">Kick!</button>
 				</li>
 			</ul>
 		</div>
 		<div collapse="myroom()">
-			<button class="btn btn-primary" ng-show="!!rpc.auth.room.out.create" ng-click="rpc.auth.room.out.create({title:'hello'})">Create</button>			
+			<button class="btn btn-primary" ng-show="!!rpc.room.out.create" ng-click="rpc.room.out.create({title:'hello'})">Create</button>			
 			<ul>
 				<li ng-repeat="room in collection('rooms').data">
 					{{room.title}} {{room.users.length}}
-					<button class="btn" ng-show="!!rpc.auth.room.out.join" ng-click="rpc.auth.room.out.join(room._id)">Join!</button>
+					<button class="btn" ng-show="!!rpc.room.out.join" ng-click="rpc.room.out.join(room._id)">Join!</button>
 				</li>
 			</ul>
 		</div>

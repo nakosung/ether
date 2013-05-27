@@ -17,7 +17,7 @@ module.exports = (server) ->
 			@source = pubs[@name]			
 			if @source
 				@source.on 'update', => @sync()
-			@snapshot = []
+			@snapshot = {}
 			@sync()			
 
 		destroy : ->
@@ -27,9 +27,7 @@ module.exports = (server) ->
 		grab : (cb) ->
 			internal = (p,cb) =>						
 				unless p?				
-					return cb(null,[{channel:@name,unknown:true}])
-				else if _.isArray p				
-					cb(null,p)
+					return cb(null,[{channel:@name,unknown:true}])				
 				else if _.isFunction p
 					fin = (err,result) ->
 						return cb(err) if err
@@ -42,6 +40,8 @@ module.exports = (server) ->
 					@watch.end()					
 
 					fin(null,r) if _.isObject(r)
+				else if _.isObject p				
+					cb(null,p)
 				else				
 					cb(null,[{channel:@name,unsupported:true}])
 
@@ -59,10 +59,13 @@ module.exports = (server) ->
 					@syncing = false
 					
 					unless err
-						old = @snapshot
+						old = @snapshot												
 						diff = jsondiffpatch.diff old, curr		
-						@snapshot = curr
-						@client.send channel:@name, diff:diff
+						if diff
+							#console.log "diffing", @name, "D".green.bold, curr, old, diff
+							#diff = curr
+							@snapshot = curr
+							@client.send channel:@name, diff:diff
 						
 					if @queued
 						@queued = false

@@ -68,10 +68,10 @@ module.exports = (server) ->
 				(doc,args...,cb) -> connected client, doc._id, cb
 			], cb
 	
-	server.publish 'users:online', (client,cb) -> users.findAll({online:$ne:null},cb)	
-	server.publish 'users:self', (client,cb) -> 
+	server.publishDocs 'users:online', (client,cb) -> users.findAll({online:$ne:null},cb)
+	server.publishDoc 'users:self', (client,cb) -> 
 		server.deps.read client
-		users.findOne {_id:client.auth,online:String(client)}, (err,doc) -> cb(err,[doc])			
+		users.findOne {_id:client.auth,online:String(client)}, cb
 
 	server.on 'client:data', (client,data) =>		
 		if client.auth?

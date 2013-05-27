@@ -36,7 +36,11 @@ module.exports = (server) ->
 
 		walk(rpc)
 
-		cb null, _.keys client.rpc
+		o = {}
+		for k,v of client.rpc
+			o[k] = true
+
+		cb null, o
 
 	server.on 'client:data', (client,data) ->
 		return unless data.rpc?
