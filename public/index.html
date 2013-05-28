@@ -2,7 +2,8 @@
 <html ng-app="client">
 <head>
 	<title>test</title>		
-	<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">	
+	<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css" />
+  	<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">	
     <!-- jQuery -->
 	<script type="text/javascript" src="lib/jquery-1.9.1.min.js"></script>
     <!-- Angular.js : load first for ng-cloak -->
@@ -21,51 +22,97 @@
 			</div>
 		</div>
 		<div class="hero-unit">
-			<h1>Ether.js</h1>
-			<h2 ng-show="myself()"><span>Hello, {{myself().name}}</span></h2>
-			<span>Compact.Easy.Expandable</span>
+			<div class="row">
+				<div class="span4">					
+					<h1>Ether.js</h1>
+					<h2 ng-show="myself()"><span>Hello, {{myself().name}}</span></h2>
+					<span>Compact.Easy.Expandable</span>
+				</div>
+				<div class="span6" ng-show="me">					
+					<button ng-show="!mm.me" ng-class="{btn:true,'btn-large':true,'btn-danger':true}" ng-click="rpc.mm.start()">START</button>
+					<button ng-show="mm.me" ng-class="{btn:true,'btn-large':true,'btn-danger':true}" ng-click="rpc.mm.stop()">STOP</button>
+					<span ng-show="mm.me">						
+						{{mm.me.skill}}
+					</span>
+					<span ng-show="mm.stats">
+						There are {{mm.stats.numPlayers}} players!
+					</span>
+				</div>
+			</div>
 		</div>
 		<div>
-			numConnections : {{stats[0].numClients}}			
-			sync-stats : {{collection('sync:stat').data}}
-			<li ng-repeat="x in collection('users:online').data">
+			numConnections : {{stats.numClients}}			
+			sync-stats : {{sync_stat}}
+			<li ng-repeat="x in users_online">
 				{{x}}				
 			</li>
 		</div>		
-		<div collapse="!myroom()">
-			<h2>{{myroom().title}}</h2>
-			<button class="btn btn-primary" ng-show="!!rpc.room.in.leave" ng-click="rpc.room.in.leave()">Leave</button>
-			<div>owner : {{myroom().owner}}</div>
-			<ul>
-				<li ng-repeat="user in myroom().users">
-					{{user}} 
-					<button class="btn" ng-show="!!rpc.room.in.owner.kick" ng-click="rpc.room.in.owner.kick(user)">Kick!</button>
-				</li>
-			</ul>
+		<div class="row">
+			<div class="span6">
+				<div collapse="!myroom">
+					<h2>{{myroom.title}}</h2>
+					<button class="btn btn-primary" ng-show="!!rpc.room.in.leave" ng-click="rpc.room.in.leave()">Leave</button>
+					<div>owner : {{myroom.owner}}</div>
+					<ul>
+						<li ng-repeat="user in myroom.users">
+							{{user.name}} 
+							<button class="btn" ng-show="!!rpc.room.in.owner.kick" ng-click="rpc.room.in.owner.kick(user.id)">Kick!</button>
+						</li>
+					</ul>
+				</div>
+				<div collapse="myroom">
+					<button class="btn btn-primary" ng-show="!!rpc.room.out.create" ng-click="rpc.room.out.create({title:'hello'})">Create</button>			
+					<ul>
+						<li ng-repeat="room in rooms">
+							{{room.title}} {{room.users.length}}
+							<button class="btn" ng-show="!!rpc.room.out.join" ng-click="rpc.room.out.join(room._id)">Join!</button>
+						</li>
+					</ul>
+				</div>
+				<div collapse="!me">						
+					<form>
+						<input type="text" ng-model="textMsg" class="input-medium search-query"></input>
+						<button class="btn btn-primary" ng-show="!!rpc.auth.addItem" ng-click="rpc.auth.addItem(textMsg)">Add</button>
+					</form>
+					<ul>
+						<li ng-repeat="x in test.array() | orderBy:'when':true">
+							{{x.author.name}} {{x.msg}} {{x.like}} {{x.when}}
+							<button class="btn" ng-show="!!rpc.auth.deleteItem && me.name == x.author.name" ng-click="rpc.auth.deleteItem(x._id)">
+								Delete
+							</button>
+							<button class="btn" ng-show="!!rpc.auth.likeItem" ng-click="rpc.auth.likeItem(x._id)">
+								Like!
+							</button>
+						</li>
+					</ul>
+				</div>
+			</div>
+			<div class="span6">
+				<div>
+					<form>
+						<input type="text" ng-model="targetUser" class="input-medium search-query" ui-autocomplete="{source:autocompleteSuggesions}"></input>
+						<button ng-click="rpc.rsvp.issue(targetUser.value,'hello')" class="btn">Invite</button>
+					</form>
+				</div>
+				<div>
+					<h5>recv rsvp</h5>
+					<ul>
+						<li ng-repeat="rsvp in me.rsvp_have">
+							{{rsvp.rsvp}} <button class="btn" ng-click="rpc.rsvp.reply(rsvp.rsvp,'reject')">Reject</button>
+						</li>
+					</ul>
+				</div>
+				<div>
+					<h5>issued rsvp</h5>
+					<ul>
+						<li ng-repeat="rsvp in me.rsvp_issued">
+							{{rsvp.issuee}} <button class="btn" ng-click="rpc.rsvp.cancel(rsvp.rsvp)">Cancel</button>
+						</li>
+					</ul>
+				</div>
+			</div>
 		</div>
-		<div collapse="myroom()">
-			<button class="btn btn-primary" ng-show="!!rpc.room.out.create" ng-click="rpc.room.out.create({title:'hello'})">Create</button>			
-			<ul>
-				<li ng-repeat="room in collection('rooms').data">
-					{{room.title}} {{room.users.length}}
-					<button class="btn" ng-show="!!rpc.room.out.join" ng-click="rpc.room.out.join(room._id)">Join!</button>
-				</li>
-			</ul>
-		</div>
-		<div collapse="!myself()">						
-			<button class="btn btn-primary" ng-show="!!rpc.auth.addItem" ng-click="rpc.auth.addItem()">Add</button>
-			<ul>
-				<li ng-repeat="x in data">
-					{{x.hello}} {{x.like}}
-					<button class="btn" ng-show="!!rpc.auth.deleteItem" ng-click="rpc.auth.deleteItem(x._id)">
-						Delete
-					</button>
-					<button class="btn" ng-show="!!rpc.auth.likeItem" ng-click="rpc.auth.likeItem(x._id)">
-						Like!
-					</button>
-				</li>
-			</ul>
-		</div>
+		
 	</div>	
 	<!-- underscore.js -->
 	<script type="text/javascript" src="lib/underscore.min.js"></script>
@@ -73,13 +120,15 @@
 	<script type="text/javascript" src="lib/angular-ui.min.js"></script>
 	<script type="text/javascript" src="lib/ui-bootstrap-0.3.0.min.js"></script>
 	<script type="text/javascript" src="lib/ui-bootstrap-tpls-0.3.0.js"></script>	
+	<script src="http://code.jquery.com/ui/1.10.2/jquery-ui.js"></script>
+	<script type="text/javascript" src="lib/autocomplete.js"></script>  
 	
 	<!-- CRITICAL CODES -->
 	<!-- sock.js -->
 	<script type="text/javascript" src="lib/sockjs-0.3.min.js"></script>	
 	<script type="text/javascript" src="lib/jsondiffpatch.min.js"></script>
 	<!-- Our client source code -->
-	<script type="text/javascript" src="lib/ether.js"></script>
+	<script type="text/javascript" src="lib/ether.js"></script>	
 	<script type="text/javascript" src="lib/client.js"></script>
 </body>
 </html>

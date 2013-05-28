@@ -1,20 +1,14 @@
 _ = require 'underscore'
 async = require 'async'
 
-expect = (error,cb,args...) ->
-	(err,result...) ->		
-		if err
-			cb(err)
-		else if JSON.stringify(args) == JSON.stringify(result)
-			cb()
-		else
-			cb(err)
-
+# this module should be remained as 'basic' so that extensions can be installed. :)
 module.exports = (server) ->
 	# only auth. users can access to rooms :)
 	server.use 'accounts'
 
 	{db,rpc,deps} = server
+
+	expect = db.expect
 
 	GROUP_NAME = 'room'
 	GROUP_OWNER = GROUP_NAME + '_owner'
@@ -23,7 +17,7 @@ module.exports = (server) ->
 
 	col = db.collection pluralize GROUP_NAME
 
-	server.publishDocs (pluralize GROUP_NAME), (client,cb) -> col.findAll({},cb)
+	server.publishDocs (pluralize GROUP_NAME), (client,cb) -> col.findAll {private:null},cb
 	server.publishDoc 'my' + GROUP_NAME, (client,cb) ->						
 		deps.read client
 		if client[CLIENT_CACHE]
@@ -34,22 +28,49 @@ module.exports = (server) ->
 	# cleanup
 	col.remove {}		
 
+	server.createRoom = (opt,cb) -> 				
+		doc = _.extend (_.extend {tickets:16}, opt), 
+			owner : "<system>"
+			users : []							
+
+		col.save doc, (err,result) ->
+			return cb(err) if err
+			cb(null,result._id)
+
+	server.destroyRoom = (room,cb) ->		
+		async.waterfall [
+			(cb) -> 
+				# mark it so that nobody can join any more!
+				col.findAndModify {query:{_id:room},update:{$set:tickets:-99999}}, cb
+
+			(doc,args...,cb) -> 	
+				return cb('no room') unless doc
+
+				# all users are being kicked out
+				jobs = doc.users.map (x) -> (cb) -> server.destroyToken 'room:' + x.id, cb
+				async.parallel jobs, cb
+
+			# in case of 0-user room, we need to remove explicitly.
+			(cb) -> col.remove {_id:room}, cb
+		], cb
+
 	joined = (client,room,cb) ->
 		throw new Error('function req') unless _.isFunction(cb)		
 
 		auth = client.auth
+		tag = client.tag()
 
 		client[CLIENT_CACHE] = room
 		deps.write client
 
-		fn = ->		
+		fn = (taker,cb) ->		
 			client[CLIENT_CACHE] = undefined
 			deps.write client				
 
 			async.series [
-				(cb) -> col.update {_id:room,users:auth}, {$pull:{users:auth},$inc:{tickets:1}}, expect("couldn't join",cb,1)
+				(cb) -> col.update {_id:room,users:tag}, {$pull:{users:tag},$inc:{tickets:1}}, expect("couldn't join",cb,1)
 				(cb) -> col.remove {_id:room,users:[]}, cb			
-			], -> 
+			], cb
 
 		
 		async.series [
@@ -64,11 +85,11 @@ module.exports = (server) ->
 		client.is_owner = true		
 		deps.write client
 
-		fn = (taker) ->	
+		fn = (taker,cb) ->	
 			client.is_owner = undefined
 			deps.write client
 
-			col.update {_id:g}, {$unset:{owner:1}}, -> 
+			col.update {_id:g}, {$unset:{owner:1}}, cb
 		
 		async.series [
 			(cb) -> client.acquireToken (client.tokenAlias GROUP_OWNER, GROUP_OWNER + ':' + g), fn, cb
@@ -97,8 +118,9 @@ module.exports = (server) ->
 				@assert_fn(cb)
 				g = client[CLIENT_CACHE]
 				auth = client.auth
+				tag = client.tag()
 				async.series [
-					(cb) -> col.update {_id:g,users:auth,owner:null}, {$set:owner:auth}, expect('claim failed',cb,1)
+					(cb) -> col.update {_id:g,users:tag,owner:null}, {$set:owner:auth}, expect('claim failed',cb,1)
 					(cb) -> becameOwner client, cb
 				], cb
 		out :
@@ -107,9 +129,10 @@ module.exports = (server) ->
 			create : (client,opt,cb) -> 
 				@assert_fn(cb)
 				auth = client.auth
+				tag = client.tag()
 				doc = _.extend (_.extend {tickets:16}, opt), 
 					owner : auth
-					users : [auth]					
+					users : [tag]					
 
 				# owner takes one seat
 				return cb('invalid tickets') if --doc.tickets < 0
@@ -124,9 +147,10 @@ module.exports = (server) ->
 				@assert_fn(cb)
 				g = db.ObjectId(g)
 				auth = client.auth
+				tag = client.tag()
 
 				async.series [
 					(cb) -> server.destroyToken (client.tokenAlias GROUP_NAME), cb
-					(cb) -> col.update {_id:g,tickets:$gt:0}, {$push:{users:auth},$inc:tickets:-1}, expect('no vacancy or invalid req',cb,1)
+					(cb) -> col.update {_id:g,tickets:$gt:0}, {$push:{users:tag},$inc:tickets:-1}, expect('no vacancy or invalid req',cb,1)
 					(cb) -> joined client, g, cb
 				], cb

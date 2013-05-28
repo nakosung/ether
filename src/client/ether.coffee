@@ -53,10 +53,16 @@ ether.factory 'sockjs', ($rootScope) ->
 
 ether.factory 'collection', (sockjs,$rootScope) ->
 	collections = {}
+	all = {}
+
+	class Data
+		array : ->
+			_.values(@)
 
 	class Collection 
 		constructor:(@name) ->
 			@init() if sockjs.online 
+			@safe_name = @name.replace(':','_')
 
 			$rootScope.$on 'sockjs.online', => @init()
 			$rootScope.$on 'sockjs.offline', => @uninit()			
@@ -65,20 +71,41 @@ ether.factory 'collection', (sockjs,$rootScope) ->
 
 			$rootScope.$on 'sockjs.json', (e,json) =>
 				return unless json.channel == @name
-				@data ?= {}
+				@data ?= new Data
 				jsondiffpatch.patch @data, json.diff				
 				if _.keys(@data).length == 0
-					@data = undefined								
+					@data = undefined
 
+				@sync()
 				$rootScope.$broadcast "collection:update", @
 		init : -> sockjs.send req:channel:@name
-		uninit : -> @data = undefined
+		uninit : -> 
+			@data = undefined
+			@sync()
+		sync : ->
+			return if all[@safe_name] == @data
 
-	(name) ->
-		unless collections[name]
-			collection = new Collection(name)
-			collections[name] = collection
-		collections[name]
+			all[@safe_name] = @data
+			$rootScope.$broadcast "collection:sync", @
+
+	ret = (name) ->
+		if name?
+			unless collections[name]
+				collection = new Collection(name)
+				collections[name] = collection
+			collections[name]
+	ret.all = all
+	ret
+
+ether.factory 'autocol', (collection,$rootScope) ->
+	(container,cols) ->		
+		cols = cols.split(' ') unless _.isArray(cols)
+		update = ->			
+			for c in cols
+				col = collection(c)
+				container[col.safe_name] = col.data
+		$rootScope.$on 'collection:sync', update
+		update()
 
 ether.factory 'rpc', (sockjs,$rootScope,collection) ->
 	rpc_dir = collection('rpc')
@@ -121,9 +148,46 @@ ether.factory 'rpc', (sockjs,$rootScope,collection) ->
 							i[oo] ?= {}
 							i = i[oo]
 						i[o.shift()] = fn
-						
-
-
-	
+			$rootScope.$broadcast 'rpc:update'					
 	instance
 
+ether.factory 'autologin', ($rootScope,rpc) ->
+	class AutoLogin
+		constructor : ->
+			@cred = null		
+			@install()
+
+			# there can be two clients racing against one account :)
+			# only the last valid client can re-connect
+			$rootScope.$on 'rpc:update', =>
+				@install()
+				if @cred and rpc.noauth? and @mayTry
+					@mayTry = false
+					rpc.noauth.login(@cred.name,@cred.pwd)					
+			
+			$rootScope.$on 'sockjs.offline', =>
+				@mayTry = rpc.auth?				
+
+		install : ->
+			if rpc.noauth?.login? and not rpc.noauth.login.__installed
+				org = rpc.noauth.login
+				rpc.noauth.login.__installed = true
+				rpc.noauth.login = (name,pwd,args...) =>
+					@store(name,pwd)
+					org(name,pwd,args...)
+
+			if rpc.auth?.logout? and not rpc.auth.logout.__installed
+				org = rpc.auth.logout
+				rpc.auth.logout.__installed = true
+				rpc.auth.logout = (args...) =>
+					@clear()
+					org(args...)
+
+		store : (name,pwd) ->
+			@cred = name:name,pwd:pwd
+			true
+		clear : ->
+			@cred = null
+			true
+
+	new AutoLogin()

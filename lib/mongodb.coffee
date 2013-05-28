@@ -124,4 +124,29 @@ module.exports = (server,opt) ->
 			for collection in collections
 				org = db[collection]
 				add_collection(collection,org)			
+
+		# test returned result matches to given args.
+		# test is limited to the length of args like a pattern matching.
+		expect : (error,cb,args...) ->
+			(err,result...) ->		
+				#console.log 'expecting',args,'->',result
+				if err
+					cb(err)
+				else 
+					for v,i in args
+						if v? and v != result[i]
+							return cb(error)
+					cb()
+
+		expectNot : (error,cb,args...) ->
+			(err,result...) ->		
+				#console.log 'expecting',args,'->',result
+				if err
+					cb(err)
+				else 
+					for v,i in args
+						if v? and v == result[i]
+							return cb(error)
+					cb()
+
 	new Instance()

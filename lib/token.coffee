@@ -8,6 +8,7 @@ module.exports = (server) ->
 	sub = redis.createClient()
 
 	sub.subscribe 'token:migrate'
+	sub.subscribe 'token:migrated'
 
 	fns = {}
 
@@ -21,27 +22,52 @@ module.exports = (server) ->
 		delete fns[k]		
 		g
 
-	sub.on 'message', (channel,message) ->		
-		[token, from,to] = JSON.parse message		
+	migration_waiting = {}
+	migration_waiting.next = 0
 
-		# taken by somebody else
-		unless from == to
-			drop_fn(token,from)?(to)
+	sub.on 'message', (channel,message) ->		
+		if channel == 'token:migrate'
+			#console.log channel,message
+			[token, from, to, id] = JSON.parse message		
+			
+			drop_fn(token,from)? to, ->			
+				client.publish 'token:migrated', id
+
+		else if channel == 'token:migrated'
+			#console.log 'token:migrated',message
+			id = message
+			o = migration_waiting[id]
+			if o?
+				o?()
+				delete migration_waiting[id]
+		
+	migrate = (k,result,who,cb) ->		
+		result = null if result == "null"
+		if result and result != who
+			#console.log 'long migratation',k,result,who
+			id = [server.id,migration_waiting.next++].join(':')
+			migration_waiting[id] = ->				
+				cb()
+			client.publish 'token:migrate', JSON.stringify [k, result, who, id]
+		else
+			cb()
 
 	server.acquireToken = (who,k,fn,cb) ->		
+		#console.log 'acquire', k, who
+		fn ?= (taker,cb) -> cb()
 		cb ?= ->
 		client.getset k, who, (err,result) ->
 			return cb(err) if err
 			add_fn k, who, fn			
-			client.publish 'token:migrate', JSON.stringify [k, result, who] if result
-			cb()
+			migrate k,result,who,cb			
 
 	server.destroyToken = (k,cb) ->
+		return cb() unless k
+
 		cb ?= ->
 		client.getset k, null, (err,result) ->
-			return cb(err) if err									
-			client.publish 'token:migrate', JSON.stringify [k, result, null] if result
-			cb()
+			return cb(err) if err
+			migrate k,result,null,cb
 
 	server.releaseToken = (who,k,cb) ->
 		cb ?= ->
@@ -57,10 +83,10 @@ module.exports = (server) ->
 
 	Client::acquireToken = (k,fn,cb) ->				
 		cb ?= ->
-		fn ?= ->
+		fn ?= (taker,cb) -> cb()
 		@acquiredTokens ?= []		
 		if @acquiredTokens.indexOf(k) < 0
-			myfn = (taker) =>				
+			myfn = (taker,cb) =>								
 				i = @acquiredTokens.indexOf k				
 				@acquiredTokens.splice(i,1) unless i<0				
 				server.deps.write @
@@ -71,7 +97,7 @@ module.exports = (server) ->
 				@removeTokenFromDeps(k)
 				@removeAliasedToken(k)
 
-				fn(taker)
+				fn taker, cb
 			server.acquireToken String(@), k, myfn, (err,result) =>				
 				return cb(err) if err
 				@acquiredTokens.push k				

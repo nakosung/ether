@@ -16,23 +16,25 @@ module.exports = (server) ->
 
 	rpc = @rpc
 
-	connected = (client,auth,cb) ->
+	connected = (client,auth,name,cb) ->
 		client.auth = auth
+		client.name = name
 		server.deps.write client
 
-		fn = ->
+		fn = (taker,cb) ->
 			client.emit 'logout'
 			client.auth = undefined
+			client.name = undefined
 			server.deps.write client
 
-			users.update {_id:auth,online:String(client)}, {$unset:online:1}, ->
+			users.update {_id:auth,online:String(client)}, {$unset:online:1}, cb
 
 		async.series [
 			(cb) -> client.acquireToken (client.tokenAlias 'auth', 'user:'+auth), fn, cb			
-			(cb) -> 				
+			(cb) ->
 				client.emit 'login'
 				cb()
-		], cb
+		], cb	
 
 	rpc.auth = 
 		__check__ : (client) -> client.auth?
@@ -41,7 +43,16 @@ module.exports = (server) ->
 		logout : (client,cb) ->
 			@assert_fn cb
 
-			server.destroyToken (client.tokenAlias 'auth')			
+			server.destroyToken (client.tokenAlias 'auth')					
+
+		list : 
+			users : (client,pat,cb) ->
+				@assert_fn cb
+				q = 					
+					name:new RegExp("^#{pat}")
+
+				users.find(q, {name:true}).limit 5, (err,result) -> 
+					cb err, (result or []).map (x) -> x.name
 	rpc.noauth = 
 		__check__ : (client) -> not client.auth?
 
@@ -67,11 +78,13 @@ module.exports = (server) ->
 				(cb) -> users.findAndModify q, cb
 				(doc,args...,cb) -> 
 					return cb('invalid login') unless doc
-					connected client, doc._id, cb
+					connected client, doc._id, doc.name, cb
 			], cb
+
+	server.ClientClass::tag = -> {id:@auth,name:@name}
 	
-	server.publishDocs 'users:online', (client,cb) -> users.findAll({online:$ne:null},{name:true},cb)
-	server.publishDoc 'users:self', (client,cb) -> 
+	server.publishDocs 'users_online', (client,cb) -> users.findAll({online:$ne:null},{name:true},cb)
+	server.publishDoc 'me', (client,cb) -> 
 		server.deps.read client
 		users.findOne {_id:client.auth,online:String(client)}, {pwd:false,heartbeat:false}, cb
 
