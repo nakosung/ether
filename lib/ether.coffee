@@ -3,6 +3,7 @@ fs = require 'fs'
 _ = require 'underscore'
 require 'colors'
 async = require 'async'
+watch = require 'node-watch'
 
 class Client extends events.EventEmitter
 	constructor : (@id,@conn) ->		
@@ -74,8 +75,8 @@ class Server extends events.EventEmitter
 		@app.use '/', express.static('public')
 		@app.use '/lib', express.static('lib/client')
 
-		fs.watch @dir + '/public', fileUpdated
-		fs.watch @dir + '/lib/client', fileUpdated
+		watch @dir + '/public', fileUpdated
+		watch @dir + '/lib/client', fileUpdated
 
 		# workaround for sock.js + express impedence mismatch
 		@server = require('http').createServer @app		
