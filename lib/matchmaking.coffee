@@ -17,9 +17,7 @@ module.exports = (server) ->
 
 	{rpc,deps,db} = server
 
-	col = db.collection 'mm'
-
-	@.init = (cb) -> rc.del 'mu', 'sigma', 'cand', cb
+	col = db.collection 'mm'	
 
 	stats = numPlayers:0	
 
@@ -203,3 +201,6 @@ module.exports = (server) ->
 			], cb			
 		stop : rpc.wrap ((client) -> client.mm?), (client,cb) ->
 			server.destroyToken (client.tokenAlias 'mm'), cb
+
+	init : (cb) -> 
+		rc.del 'mu', 'sigma', 'cand', cb

@@ -2,8 +2,10 @@ ether = require './lib/ether'
 _ = require 'underscore'
 async = require 'async'
 
-plugins = 'coffee-script cluster mongodb rpc stats accounts'.split(' ')	
+plugins = 'coffee-script express cluster mongodb rpc stats accounts'.split(' ')	
 opts = 
+	express : 
+		port : 3338
 	cluster : false
 	mongodb: ['ether',[]]
 
@@ -32,6 +34,6 @@ if server
 	
 	article_test (db.collection 'mycollection'), rpc.auth
 
-	server.listen()
+	server.initialize()
 
 	

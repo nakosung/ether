@@ -1,9 +1,7 @@
 events = require 'events'
-fs = require 'fs'
 _ = require 'underscore'
-require 'colors'
 async = require 'async'
-watch = require 'node-watch'
+require 'colors'
 
 class Client extends events.EventEmitter
 	constructor : (@id,@conn) ->		
@@ -37,67 +35,18 @@ class Server extends events.EventEmitter
 		@all = 
 			sendraw : (raw) => client.sendraw raw for client in @clients
 			send : (data) => client.send data for client in @clients
-
-		@initSockjs()
-		@initExpress()	
-
-	initSockjs : ->
-		sockjs = require 'sockjs'
-		@sockjs = sockjs.createServer log:-> # silent sock.js!
-		@sockjs.on 'connection', (conn) => 
-			client = new @ClientClass("#{@id}:#{@nextClientId++}",conn)			
-
-			client.on 'raw', (raw) => @emit 'client:raw', client, raw
-			client.on 'data', (data) => @emit 'client:data', client, data
-			conn.once 'close', => 
-				client.destroy()
-				i = @clients.indexOf client
-				@clients.splice i,1
-				@emit 'client:leave', client
-
-			@on 'client-src:changed', => client.sendraw 'client-src:changed'
-
-			@clients.push client			
-			@emit 'client:join', client
-
-	initExpress : ->
-		express = require 'express'		
-		http = require 'http'
-
-		fileUpdated = =>
-			unless @timer
-				@timer = setTimeout (=>
-					@timer = null
-					@emit 'client-src:changed'
-					), 100					
-
-		@app = express()		
-		@app.use '/', express.static('public')
-		@app.use '/lib', express.static('lib/client')
-
-		watch @dir + '/public', fileUpdated
-		watch @dir + '/lib/client', fileUpdated
-
-		# workaround for sock.js + express impedence mismatch
-		@server = require('http').createServer @app		
-		@sockjs.installHandlers @server, {prefix:'/sockjs'}
-
+	
 	use : (plugin,opt) ->
 		if _.isString plugin			
 			@use (require @dir + '/' + plugin), opt
 		else
 			unless plugin.init?
 				plugin.init = true				
-				plugin.call(@,@,opt)
-				@inits.push plugin.init if plugin.init?
+				r = plugin.call(@,@,opt)
+				@inits.push r.init if _.isFunction(r?.init)
 
-	init : (cb) ->
-		async.series @inits, cb
-
-	listen : (port = 3338) ->	
-		@init =>
-			@server.listen 3338
-			console.log 'ether'.green.bold, 'listens at port', String(port).red.bold
+	initialize : (cb) ->				
+		async.series @inits, cb	
 
 	cleanup : (fn) ->
 		@cleanups ?= []
