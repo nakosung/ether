@@ -13,58 +13,55 @@ module.exports = (server) ->
 			target[dep] ?= []
 			target[dep].push extra if target[dep].indexOf(extra) < 0
 
+	class Watcher
+		constructor : (@deps,fn,watching) ->
+			if watching?
+				if _.isArray(watching)
+					@watching = {}
+					watching.forEach (x) => @watching[x] = '*'
+				else 
+					@watching = watching
+			else
+				@watching = {}
+
+			watchFn = (written) =>
+				# for all of dirties
+				for k, v of written
+					w = @watching[k]
+					if w? 							
+						# all is dirty, listens to everything or we have exact matches.
+						if w == '*' or v == '*' or _.intersection(w,v).length
+							# call user defined function immediately without callback
+							fn()
+							# no needs to evaluate loop
+							break
+
+			# we are listening
+			server.on 'dep:update', watchFn
+
+			# for graceful exit
+			@release = =>
+				server.removeListener 'dep:update', watchFn
+
+		# destroy doesn't destroy anything but unsubscribe event
+		destroy : ->
+			@release()
+
+		# user module can call begin/end pair.
+		begin : ->
+			@deps.watching = true
+			@deps.deps = {}						
+		
+		end : ->					
+			@watching = @deps.deps
+			@deps.watching = false
+			@deps.deps = null
+
 	class Deps
-		constructor : ->		
-			deps = @
-
-			class Watcher
-				constructor : (fn,watching) ->
-					if watching?
-						if _.isArray(watching)
-							@watching = {}
-							watching.forEach (x) => @watching[x] = '*'
-						else 
-							@watching = watching
-					else
-						@watching = {}
-
-					watchFn = (written) =>
-						# for all of dirties
-						for k, v of written
-							w = @watching[k]
-							if w? 							
-								# all is dirty, listens to everything or we have exact matches.
-								if w == '*' or v == '*' or _.intersection(w,v).length
-									# call user defined function immediately without callback
-									fn()
-									# no needs to evaluate loop
-									break
-
-					# we are listening
-					server.on 'dep:update', watchFn
-
-					# for graceful exit
-					@release = =>
-						server.removeListener 'dep:update', watchFn
-
-				# destroy doesn't destroy anything but unsubscribe event
-				destroy : ->
-					@release()
-
-				# user module can call begin/end pair.
-				begin : ->
-					deps.watching = true
-					deps.deps = {}						
-				
-				end : ->					
-					@watching = deps.deps
-					deps.watching = false
-					deps.deps = null
-
-			@WatcherClass = Watcher
+		constructor : ->					
 	
 		# instantiate a watch
-		watch : (fn,watching) -> new @WatcherClass(fn,watching)
+		watch : (fn,watching) -> new Watcher(@,fn,watching)
 
 		# needs something?
 		read : (dep,extra) =>			
