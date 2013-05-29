@@ -117,7 +117,11 @@ module.exports = (server,opt) ->
 			server.on 'db:watch', (target) -> 		
 				readSources = target	
 					
-			@ObjectId = mongojs.ObjectId		
+			@ObjectId = (x) ->
+				if x instanceof mongojs.ObjectId		
+					x
+				else
+					mongojs.ObjectId(x)
 
 			@collections = []
 

@@ -28,6 +28,7 @@ article_test = (col,root) ->
 server?.use 'room'
 server?.use 'friends'
 server?.use 'matchmaking'
+server?.use 'shop'
 
 if server
 	{db,rpc,deps} = server

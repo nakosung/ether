@@ -38,15 +38,19 @@
 				{{x}}				
 			</li>
 		</div>		
-		<div class="row" collapse="!me">
-			<div class="span6">
-				<div ng-hide="!myroom" ng-include="'template/room.html'" ng-controller="RoomCtrl"></div>
-				<div ng-hide="myroom" ng-include="'template/lobby.html'"></div>
-				<div ng-include="'template/board.html'"></div>
+		<div collapse="!me">
+			<div class="row">
+				<div class="span6">
+					<div ng-hide="!myroom" ng-include="'template/room.html'" ng-controller="RoomCtrl"></div>
+					<div ng-hide="myroom" ng-include="'template/lobby.html'"></div>
+					<div ng-include="'template/board.html'"></div>
+				</div>
+				<div class="span6" ng-include="'template/friends.html'" ng-controller="FriendsCtrl">
+				</div>
+			</div>		
+			<div class="row" ng-include="'template/shop.html'">
 			</div>
-			<div class="span6" ng-include="'template/friends.html'" ng-controller="FriendsCtrl">
-			</div>
-		</div>		
+		</div>
 	</div>	
 	<!-- underscore.js -->
 	<script type="text/javascript" src="lib/underscore.min.js"></script>
