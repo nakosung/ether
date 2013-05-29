@@ -8,16 +8,6 @@ Ether.js aims to be an alternative to Meteor, which doesn't share design princip
 1. npm i
 1. node index.js
 
-Roadmap
---
-
-1. Implement basic massive online game platform
- a. Friends 
- a. Invitation 
- a. Match making 
- a. Shop
- 
-=======
 ## Roadmap
 
 1. Basic functionalities for massive online game platform
