@@ -67,7 +67,7 @@ module.exports = (server) ->
 				(cb) -> col.findAndModify {query:{_id:rsvp,canceled:null,replied:null}, update:{$set:replied:action}}, cb
 
 				# main
-				(doc,args...,cb) -> 					
+				(doc,args...,cb) => 					
 					return cb(null,null) unless doc
 
 					jobs = @processors.map (p) -> (cb) -> p.reply(doc,action,cb)
