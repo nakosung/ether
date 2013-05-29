@@ -1,4 +1,4 @@
-# Ether.js
+# Ether.js 0.0.0
 
 Ether.js aims to be an alternative to Meteor, which doesn't share design principles with node.js.
 
