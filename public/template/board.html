@@ -1,0 +1,15 @@
+<form>
+	<input type="text" ng-model="textMsg" class="input-medium search-query"></input>
+	<button class="btn btn-primary" ng-show="!!rpc.auth.addItem" ng-click="rpc.auth.addItem(textMsg)">Add</button>
+</form>
+<ul>
+	<li ng-repeat="x in test.array() | orderBy:'when':true">
+		{{x.author.name}} {{x.msg}} {{x.like}} {{x.when}}
+		<button class="btn" ng-show="!!rpc.auth.deleteItem && me.name == x.author.name" ng-click="rpc.auth.deleteItem(x._id)">
+			Delete
+		</button>
+		<button class="btn" ng-show="!!rpc.auth.likeItem" ng-click="rpc.auth.likeItem(x._id)">
+			Like!
+		</button>
+	</li>
+</ul>

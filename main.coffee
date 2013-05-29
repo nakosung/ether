@@ -24,7 +24,7 @@ article_test = (col,root) ->
 		col.update q, u, db.expect('failed',cb,1)
 
 server?.use 'room'
-server?.use 'rsvp'
+server?.use 'friends'
 server?.use 'matchmaking'
 
 if server

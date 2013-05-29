@@ -1,0 +1,19 @@
+<h2>{{myroom.title}}</h2>
+<button class="btn btn-primary" ng-show="!!rpc.room.in.leave" ng-click="rpc.room.in.leave()">Leave</button>
+<div>owner : {{myroom.owner}}</div>
+<ul>
+	<li ng-repeat="user in myroom.users">
+		{{user.name}} 
+		<button class="btn" ng-show="!!rpc.room.in.owner.kick" ng-click="rpc.room.in.owner.kick(user.id)">Kick!</button>
+	</li>
+</ul>
+<hr>
+<div>
+	<div ng-repeat="line in chat">
+		{{line}}
+	</div>
+	<form>
+		<input type="text" ng-model="chatMsg" class="input-medium search-query"></input>
+		<button class="btn btn-primary" ng-click="rpc.room.in.chat(chatMsg)">Send</button>
+	</form>
+</div>

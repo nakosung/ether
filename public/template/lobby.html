@@ -1,0 +1,7 @@
+<button class="btn btn-primary" ng-show="!!rpc.room.out.create" ng-click="rpc.room.out.create({title:'hello'})">Create</button>			
+<ul>
+	<li ng-repeat="room in rooms">
+		{{room.title}} {{room.users.length}}
+		<button class="btn" ng-show="!!rpc.room.out.join" ng-click="rpc.room.out.join(room._id)">Join!</button>
+	</li>
+</ul>

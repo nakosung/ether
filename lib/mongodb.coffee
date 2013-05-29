@@ -8,15 +8,19 @@ last_fn = (args) ->
 module.exports = (server,opt) ->	
 	server.use 'deps'
 
+	# publish document set to client via 'publish'	
 	server.publishDocs = (pub,fn) ->
 		server.publish pub, (client,cb) ->
 			fn client,(err,docs) ->
 				return cb(err) if err
 
 				o = {}
-				for doc in docs
+				for doc,i in docs
+					doc._i = i
 					o[doc._id] = doc
 				cb(null,o)
+
+	# publish a document to client via 'publish'
 	server.publishDoc = (pub,fn) ->
 		server.publish pub, (client,cb) ->
 			fn client,(err,doc) ->				
@@ -41,22 +45,30 @@ module.exports = (server,opt) ->
 				toString : ->
 					@dep_name
 
-				read : ->
-					server.deps.read @dep_name
+				read : (q) ->
+					extra = q._id if q? and q._id instanceof db.ObjectId					
+
+					server.deps.read @dep_name, extra
 
 					if readSources
 						readSources.push @ unless ~readSources.indexOf @
 
-				find : (args...) ->
-					@read()				
+				invalidate : (q) ->
+					extra = q._id if q? and q._id instanceof db.ObjectId		
+
+					server.deps.write @, extra
+
+					@emit 'update'	
+
+				find : (args...) ->					
+					@read(args[0])				
 
 					@org.find(args...)
 
-				findOne : (args...) ->
-					@read()				
+				findOne : (args...) ->					
+					@read(args[0])				
 
 					@org.findOne(args...)
-
 
 				# meteor like helper
 				findAll : (args...) ->
@@ -73,17 +85,17 @@ module.exports = (server,opt) ->
 				findAndModify : (args...) ->
 					cb = last_fn(args)
 
-					@read()
+					@read(args[0])
 
 					@org.findAndModify args..., (r...) =>
-						@invalidate()
+						@invalidate(args[0]?.query)
 						cb(r...)
 
 				update : (args...) ->
 					cb = last_fn(args)
 
 					@org.update args..., (r...) =>
-						@invalidate()
+						@invalidate(args[0])
 						cb(r...)		
 
 				save : (args...) ->			
@@ -100,11 +112,7 @@ module.exports = (server,opt) ->
 						@invalidate()
 						cb(r...)
 
-				ensureIndex : (args...) -> @org.ensureIndex args...				
-
-				invalidate : ->
-					server.deps.write @
-					@emit 'update'	
+				ensureIndex : (args...) -> @org.ensureIndex args...								
 
 			server.on 'db:watch', (target) -> 		
 				readSources = target	
@@ -133,19 +141,19 @@ module.exports = (server,opt) ->
 				if err
 					cb(err)
 				else 
-					for v,i in args
-						if v? and v != result[i]
+					for v,i in args						
+						if not _.isUndefined(v) and v != result[i]
 							return cb(error)
 					cb()
 
 		expectNot : (error,cb,args...) ->
 			(err,result...) ->		
-				#console.log 'expecting',args,'->',result
+				#console.log 'not-expecting',args,'->',result
 				if err
 					cb(err)
 				else 
 					for v,i in args
-						if v? and v == result[i]
+						if not _.isUndefined(v) and v == result[i]
 							return cb(error)
 					cb()
 

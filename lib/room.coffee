@@ -26,7 +26,12 @@ module.exports = (server) ->
 			cb()
 
 	# cleanup
-	col.remove {}		
+	col.remove {}	
+
+	channel = (room) -> [GROUP_NAME,room].join(':')
+
+	notify = (room,message) ->
+		server.pub channel(room),message	
 
 	server.createRoom = (opt,cb) -> 				
 		doc = _.extend (_.extend {tickets:16}, opt), 
@@ -41,7 +46,7 @@ module.exports = (server) ->
 		async.waterfall [
 			(cb) -> 
 				# mark it so that nobody can join any more!
-				col.findAndModify {query:{_id:room},update:{$set:tickets:-99999}}, cb
+				col.findAndModify {query:{_id:room},update:{$set:{tickets:-99999,private:true}}}, cb
 
 			(doc,args...,cb) -> 	
 				return cb('no room') unless doc
@@ -52,6 +57,9 @@ module.exports = (server) ->
 
 			# in case of 0-user room, we need to remove explicitly.
 			(cb) -> col.remove {_id:room}, cb
+			(args...,cb) -> 
+				notify(room,destroyed:true) 
+				cb()
 		], cb
 
 	joined = (client,room,cb) ->
@@ -62,14 +70,24 @@ module.exports = (server) ->
 
 		client[CLIENT_CACHE] = room
 		deps.write client
+		
+		relay = (channel,msg) -> client.publish channel, msg
+		server.sub channel(room), relay
+		notify room, joined:client.name
 
 		fn = (taker,cb) ->		
+			notify room, left:client.name
+			server.unsub channel(room), relay
+
 			client[CLIENT_CACHE] = undefined
 			deps.write client				
 
-			async.series [
+			async.waterfall [
 				(cb) -> col.update {_id:room,users:tag}, {$pull:{users:tag},$inc:{tickets:1}}, expect("couldn't join",cb,1)
-				(cb) -> col.remove {_id:room,users:[]}, cb			
+				(cb) -> col.remove {_id:room,users:[]}, cb
+				(result,cb) ->
+					notify(room,destroyed:true) if result == 1
+					cb()
 			], cb
 
 		
@@ -109,6 +127,9 @@ module.exports = (server) ->
 					@assert_fn(cb)
 					return cb("can't kick yourself") if String(opp) == String(client.auth)
 					server.destroyToken 'room:' + db.ObjectId(opp), cb
+
+			chat : (client,msg,cb) ->
+				server.pub [GROUP_NAME,client[CLIENT_CACHE]].join(':'), sender:client.name, chat:msg
 			
 			leave : (client,cb) -> 
 				@assert_fn(cb)
@@ -132,7 +153,7 @@ module.exports = (server) ->
 				tag = client.tag()
 				doc = _.extend (_.extend {tickets:16}, opt), 
 					owner : auth
-					users : [tag]					
+					users : [tag]
 
 				# owner takes one seat
 				return cb('invalid tickets') if --doc.tickets < 0

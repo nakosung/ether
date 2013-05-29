@@ -57,7 +57,8 @@ ether.factory 'collection', (sockjs,$rootScope) ->
 
 	class Data
 		array : ->
-			_.values(@)
+			a = _.values(@)
+			_.sortBy a, (x) -> x._i
 
 	class Collection 
 		constructor:(@name) ->
@@ -191,3 +192,26 @@ ether.factory 'autologin', ($rootScope,rpc) ->
 			true
 
 	new AutoLogin()
+
+ether.factory 'subscribe', ($rootScope) ->
+	subs = []
+
+	$rootScope.$on 'sockjs.json', (e,json) =>		
+		return unless json.pub? 
+
+		[channel,message] = json.pub
+
+		subs.forEach (sub) ->			
+			if sub.pattern instanceof RegExp and sub.pattern.test(channel) or sub.pattern == channel 
+				sub.fn(channel,message)
+
+	(pattern,fn) ->
+		o = pattern:pattern,fn:fn
+		subs.push o
+
+		# returns remover
+		->
+			i = subs.indexOf o
+			subs.splice i, 1
+	
+	

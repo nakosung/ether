@@ -1,6 +1,5 @@
 _ = require 'underscore'
 trueskill = require 'trueskill'
-redis = require 'redis'
 async = require 'async'
 
 INITIAL_MU = 25.0
@@ -11,30 +10,82 @@ trueskill.SetInitialSigma INITIAL_SIGMA
 
 module.exports = (server) ->
 	server.use 'accounts'		
+	server.use 'redis'
 
-	rc = redis.createClient()
-
-	rc.keys "mm:*", (err,result) ->
-		console.log result
-		rc.del result..., console.log
+	# using redis for Z-collection
+	rc = server.redis.pub
 
 	{rpc,deps,db} = server
 
 	col = db.collection 'mm'
-	#col.remove {}
 
-	rc.del 'mu', 'sigma', 'cand', ->
+	@.init = (cb) -> rc.del 'mu', 'sigma', 'cand', cb
 
-	stats = 
-		numPlayers:0	
+	stats = numPlayers:0	
 
 	mm_setup = (team,cb) ->		
 		console.log 'mm_setup',team
+
+		room = null
+
+		updateSkills = (users,cb) ->
+			async.waterfall [
+				# grab skills
+				(cb) -> 
+					jobs = users.map (u) -> (cb) -> col.findOne {_id:u.id}, cb
+					async.parallel jobs, cb
+				# update!
+				(r,cb) ->
+					v.rank = i+1 for v,i in r
+
+					# it may consume some time... 
+					trueskill.AdjustPlayers r					
+
+					jobs = r.map (s) -> (cb) -> 
+						async.series [
+							(cb) -> col.update {_id:s._id}, {$set:skill:s.skill}, db.expect('skill update failed',cb,1)
+							(cb) -> 
+								deps.write 'skill', s._id
+								cb()
+						], cb						
+
+					async.parallel jobs, cb				
+			], cb
+
+		repl = (cmd,cb) ->
+			switch cmd 
+				when "mm"
+					async.waterfall [
+						(cb) -> db.rooms.findOne {_id:room}, cb
+						(doc,cb) ->
+							users = _.sortBy doc.users, (x) -> x.name							
+							updateSkills(users,cb)
+					], cb
+				else cb('unknown command')
+
+		listener = (channel,message) ->
+			console.log 'listener', message
+			if message.destroyed?				
+				server.destroyToken 'room:'+room, ->			
+			if message.chat?[0] == '/'
+				repl message.chat.substr(1), (err) ->
+					console.error err if err
+
+
+		fn = (taker,cb) ->
+			console.log '[matchmaking]'.green.bold,'room destroyed'
+			cb()		
+
 		async.waterfall [
-			(cb) -> server.createRoom {title:'Match making rulez!'}, cb
-			(room,cb) ->				
+			(cb) -> server.createRoom {title:'Match making rulez!',private:true}, cb
+			(r,cb) -> 				
+				room = r
+				console.log room
+				server.sub 'room:'+room, listener
+				server.acquireToken 'mm', 'room:'+room, fn, cb			
+			(cb) ->				
 				console.log 'room created', room
-				jobs = team.map (x) -> (cb) -> server.acquireToken room, 'mm:'+x, undefined, cb
+				jobs = team.map (x) -> (cb) -> server.acquireToken 'room:'+room, 'mm:'+x, ((args...,cb) -> cb()) , cb
 				async.parallel jobs, (err) ->
 					if err
 						server.destroyRoom room, cb
@@ -61,24 +112,38 @@ module.exports = (server) ->
 				async.parallel jobs, cb			
 		], cb
 
-	deps.watch _.debounce(mm_watch,500), ['mm']
+	watch = null
+	mm_end = (taker,cb) ->
+		# Ooops. we got timed-out.
+		if taker == "TIMEOUT"
+			watch.destroy()
+			cb()
+		# In normal situations, we are never giving up!
+		else
+			cb('No way, it is mine')
 
-	server.publish 'mm', (client,cb) ->		
-		deps.read 'mm'
-		cb null, 
-			stats:stats				
-			me:client.mm
+	server.acquireToken server.id, 'mm:watch', mm_end, (err) ->
+		unless err
+			console.log 'matchmaking sits on this node'.green.bold, server.id		
+			watch = deps.watch _.debounce(mm_watch,500), ['mm']
 
-	mm_start = (client,cb) ->		
+	server.publish 'mm', (client,cb) ->
+		deps.read client
+		cb null, me:client.mm
+
+	server.publish 'mm:stats', (client,cb) ->		
+		deps.read 'mm'				
+		cb null, stats							
+
+	mm_start = (client,cb) ->
 		client.mm = 
 			processing : true
-			score : '?'
+			score : '?'		
 
-		deps.write 'mm'			
-
-		fn = (taker,cb) ->						
+		fn = (taker,cb) ->
+			console.log 'mm_start'.red.bold, client.id, taker
 			delete client.mm
-			deps.write 'mm'
+			deps.write client
 
 			async.parallel [
 				(cb) -> rc.zrem 'mu', client.auth, cb
@@ -89,9 +154,13 @@ module.exports = (server) ->
 							deps.write 'mm'
 						cb(err,result)
 				(cb) ->
-					return cb() unless taker
-
-					rpc.room.out.join.call rpc,client,taker,cb
+					# if my mm token is taken by the system? YEAH! we gonna move in!
+					m = /^room:(.*)/.exec taker
+					if m
+						rpc.room.out.join.call rpc,client,m[1],cb						
+					# the token is just removed.
+					else
+						cb()
 			], cb			
 
 		doc = null
@@ -103,7 +172,7 @@ module.exports = (server) ->
 					(cb) -> client.tokenDeps (client.tokenAlias 'mm'), (client.tokenAlias 'auth'), cb
 				], cb		
 			(args...,cb) -> 				
-				col.findOne {_id:client.auth}, (err,r,doc) ->								
+				col.findOne {_id:client.auth}, (err,doc) ->
 					return cb(err) if err
 					return cb(null,doc) if doc 
 					doc = {_id:client.auth,skill:[INITIAL_MU,INITIAL_SIGMA]}
@@ -112,7 +181,7 @@ module.exports = (server) ->
 						cb(null,doc)
 			(doc,cb) ->								
 				client.mm.skill = doc.skill				
-				deps.write 'mm'
+				deps.write client
 
 				async.parallel [
 					(cb) -> rc.zadd 'mu', doc.skill[0], client.auth, cb
@@ -127,10 +196,10 @@ module.exports = (server) ->
 
 	rpc.mm =
 		__check__ : (client) -> rpc.auth.__check__(client)
-		start : (client,cb) ->
+		start : rpc.wrap ((client) -> not client.mm?), (client,cb) ->
 			async.series [				
 				(cb) -> server.destroyToken (client.tokenAlias 'mm'), cb				
 				(cb) -> mm_start client, cb				
 			], cb			
-		stop : (client,cb) ->
+		stop : rpc.wrap ((client) -> client.mm?), (client,cb) ->
 			server.destroyToken (client.tokenAlias 'mm'), cb

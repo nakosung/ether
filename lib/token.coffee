@@ -1,83 +1,32 @@
-redis = require 'redis'
 _ = require 'underscore'
+async = require 'async'
 
 module.exports = (server) ->
 	server.use 'deps'
+	server.use 'redis'
 
-	client = redis.createClient()
-	sub = redis.createClient()
-
-	sub.subscribe 'token:migrate'
-	sub.subscribe 'token:migrated'
-
-	fns = {}
-
-	add_fn = (token,who,fn) ->
-		k = [token,who].join()
-		fns[k] = fn		
-
-	drop_fn = (token,who) ->
-		k = [token,who].join()
-		g = fns[k]		
-		delete fns[k]		
-		g
-
-	migration_waiting = {}
-	migration_waiting.next = 0
-
-	sub.on 'message', (channel,message) ->		
-		if channel == 'token:migrate'
-			#console.log channel,message
-			[token, from, to, id] = JSON.parse message		
-			
-			drop_fn(token,from)? to, ->			
-				client.publish 'token:migrated', id
-
-		else if channel == 'token:migrated'
-			#console.log 'token:migrated',message
-			id = message
-			o = migration_waiting[id]
-			if o?
-				o?()
-				delete migration_waiting[id]
-		
-	migrate = (k,result,who,cb) ->		
-		result = null if result == "null"
-		if result and result != who
-			#console.log 'long migratation',k,result,who
-			id = [server.id,migration_waiting.next++].join(':')
-			migration_waiting[id] = ->				
-				cb()
-			client.publish 'token:migrate', JSON.stringify [k, result, who, id]
-		else
-			cb()
+	exclusive = (require './exclusive') {id:server.id,pub:server.redis.pub,sub:server.redis.sub}	
 
 	server.acquireToken = (who,k,fn,cb) ->		
-		#console.log 'acquire', k, who
-		fn ?= (taker,cb) -> cb()
-		cb ?= ->
-		client.getset k, who, (err,result) ->
-			return cb(err) if err
-			add_fn k, who, fn			
-			migrate k,result,who,cb			
+		fn2 = (taker...,cb) =>
+			if who == taker[0]
+				cb()
+			else
+				fn(taker[0],cb)
+		exclusive.take k,fn2,who,cb
 
 	server.destroyToken = (k,cb) ->
 		return cb() unless k
 
-		cb ?= ->
-		client.getset k, null, (err,result) ->
-			return cb(err) if err
-			migrate k,result,null,cb
+		exclusive.destroy k,cb	
 
 	server.releaseToken = (who,k,cb) ->
-		cb ?= ->
-		drop_fn k,who
-		client.del k, cb
+		exclusive.destroy k,cb
 
 	server.on 'client:join', (client) ->
 		client.on 'close', ->
 			client.acquiredTokens?.map (token) => 
-				server.destroyToken(token)
+				server.destroyToken token, ->
 
 	Client = server.ClientClass
 
@@ -93,21 +42,26 @@ module.exports = (server) ->
 
 				@emit 'lost-token', k, taker		
 				
-				@destroyDependentTokens(k)
 				@removeTokenFromDeps(k)
 				@removeAliasedToken(k)
 
-				fn taker, cb
+				async.series [
+					(cb) => @destroyDependentTokens k, cb
+					(cb) => fn taker, cb				
+				], cb
 			server.acquireToken String(@), k, myfn, (err,result) =>				
 				return cb(err) if err
 				@acquiredTokens.push k				
 				server.deps.write @				
 				cb()
 
-	Client::destroyDependentTokens = (k) ->
+	Client::destroyDependentTokens = (k,cb) ->
+		jobs = []
 		l = @token_deps?[k]				
 		if l?					
-			server.destroyToken(v) for v in l
+			for v in l
+				jobs.push (cb) -> server.destroyToken v,cb
+		async.parallel jobs, cb
 
 	Client::removeTokenFromDeps = (k) ->
 		if @token_deps
@@ -144,11 +98,13 @@ module.exports = (server) ->
 
 	Client::destroyToken = (k,cb) ->
 		if k instanceof RegExp
+			jobs = []
 			for t in @acquiredTokens
 				if k.test(t)
-					server.destroyToken(t)
+					jobs.push (cb) -> server.destroyToken t, cb
+			async.parallel jobs, cb
 		else
-			server.destroyToken(t)
+			server.destroyToken t, cb
 
 	Client::hasToken = (pat) ->		
 		_.any @acquiredTokens, (x) -> pat.test(x)

@@ -24,6 +24,8 @@ class Client extends events.EventEmitter
 	sendraw : (raw) -> @conn.write raw
 	send : (json) -> @sendraw JSON.stringify json
 
+	publish : (channel,message) -> @send pub:[channel,message]
+
 class Server extends events.EventEmitter
 	constructor : (@ClientClass = Client) ->		
 		@nextClientId = 0
@@ -86,10 +88,15 @@ class Server extends events.EventEmitter
 			unless plugin.init?
 				plugin.init = true				
 				plugin.call(@,@,opt)
+				@inits.push plugin.init if plugin.init?
 
-	listen : (port = 3338) ->		
-		@server.listen 3338
-		console.log 'ether'.green.bold, 'listens at port', String(port).red.bold
+	init : (cb) ->
+		async.series @inits, cb
+
+	listen : (port = 3338) ->	
+		@init =>
+			@server.listen 3338
+			console.log 'ether'.green.bold, 'listens at port', String(port).red.bold
 
 	cleanup : (fn) ->
 		@cleanups ?= []

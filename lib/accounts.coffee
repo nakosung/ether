@@ -43,7 +43,7 @@ module.exports = (server) ->
 		logout : (client,cb) ->
 			@assert_fn cb
 
-			server.destroyToken (client.tokenAlias 'auth')					
+			server.destroyToken (client.tokenAlias 'auth'), cb
 
 		list : 
 			users : (client,pat,cb) ->
@@ -84,9 +84,12 @@ module.exports = (server) ->
 	server.ClientClass::tag = -> {id:@auth,name:@name}
 	
 	server.publishDocs 'users_online', (client,cb) -> users.findAll({online:$ne:null},{name:true},cb)
-	server.publishDoc 'me', (client,cb) -> 
-		server.deps.read client
-		users.findOne {_id:client.auth,online:String(client)}, {pwd:false,heartbeat:false}, cb
+	server.publishDoc 'me', (client,cb) -> 		
+		server.deps.read client		
+		if client.auth
+			users.findOne {_id:client.auth,online:String(client)}, {pwd:false,heartbeat:false}, cb
+		else
+			cb()
 
 	server.on 'client:data', (client,data) =>		
 		if client.auth?

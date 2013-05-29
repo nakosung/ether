@@ -1,0 +1,8 @@
+<button ng-show="!!rpc.mm.start" ng-class="{btn:true,'btn-large':true,'btn-danger':true}" ng-click="rpc.mm.start()">START</button>
+<button ng-show="!!rpc.mm.stop" ng-class="{btn:true,'btn-large':true,'btn-danger':true}" ng-click="rpc.mm.stop()">STOP</button>
+<span ng-show="mm.me">						
+	{{mm.me.skill}}
+</span>
+<span ng-show="mm.stats">
+	There are {{mm_stats.numPlayers}} players!
+</span>

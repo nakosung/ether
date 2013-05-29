@@ -1,12 +1,32 @@
+# RSVP presents general purpose rsvp.
+# 
+# 	Any mongo-doc can issue rsvp to any mongo-doc. Issuer's document is extended 
+#	with rsvp_issued:[] and issuee's document is extended with rsvp_have:[]
+#
+# Only three functions.
+#
+#	As an issuer,
+#		* issue
+#		* cancel
+#
+#	As an issuee,
+#		* reply
+#
+# You can extend rsvp with providing 'processors' by server.rsvp.add_processor.
+# Processor should implement 'validate(doc,cb)', 'reply(doc,action,cb)'.
+
 _ = require 'underscore'
 async = require 'async'
 
 module.exports = (server) ->
-	{db,deps,rpc} = server
+	{db} = server
 
 	col = db.collection 'rsvp'
 
-	RSVP = 
+	class RSVP
+		constructor : ->
+			@processors = []
+	
 		issue : (issuer,issuee,what,cb) ->			
 			issuer_db = db[issuer?.db]
 			issuee_db = db[issuee?.db]
@@ -19,9 +39,12 @@ module.exports = (server) ->
 				issuee : issuee
 				what : what
 				when : Date.now()								
+
+			jobs = @processors.map (p) -> (cb) -> p.validate doc, cb
 			
 			async.waterfall [
-				(cb) -> issuer_db.findOne {_id:issuer.id,rsvp_issued:$elemMatch:{issuee:issuee,what:what}}, db.expect("pending rsvp",cb,null)
+				(cb) -> async.parallel jobs, cb
+				(args...,cb) -> issuer_db.findOne {_id:issuer.id,rsvp_issued:$elemMatch:{issuee:issuee,what:what}}, db.expect("pending rsvp",cb,null)
 				(cb) -> col.save doc, cb
 				(doc,args...,cb) ->
 					return cb('rsvp creation err') unless doc
@@ -38,16 +61,20 @@ module.exports = (server) ->
 			rsvp = db.ObjectId(rsvp)						
 			async.waterfall [				
 				# ensure req is valid
-				(cb) -> issuee_db.findOne {_id:issuee.id,rsvp_have:rsvp:rsvp}, db.expectNot("?",cb,null)
+				(cb) -> issuee_db.findOne {_id:issuee.id,rsvp_have:$elemMatch:rsvp:rsvp}, db.expectNot("?",cb,null)
 
 				# find rsvp from collection
 				(cb) -> col.findAndModify {query:{_id:rsvp,canceled:null,replied:null}, update:{$set:replied:action}}, cb
 
 				# main
-				(doc,args...,cb) -> cb(null,doc)
+				(doc,args...,cb) -> 					
+					return cb(null,null) unless doc
+
+					jobs = @processors.map (p) -> (cb) -> p.reply(doc,action,cb)
+					async.parallel jobs, ->	cb(null,doc)
 
 				# clean up
-				(doc,cb) ->		
+				(doc,cb) ->							
 					issuer_db = db[doc?.issuer.db]			
 					unless doc and issuer_db?
 						# delete it from have's anyway
@@ -68,7 +95,7 @@ module.exports = (server) ->
 			rsvp = db.ObjectId(rsvp)						
 			async.waterfall [				
 				# ensure req is valid
-				(cb) -> issuer_db.findOne {_id:issuer.id,rsvp_issued:rsvp:rsvp}, db.expectNot("?",cb,null)
+				(cb) -> issuer_db.findOne {_id:issuer.id,rsvp_issued:$elemMatch:rsvp:rsvp}, db.expectNot("?",cb,null)
 
 				# find rsvp from collection
 				(cb) -> col.findAndModify {query:{_id:rsvp,canceled:null,replied:null}, update:{$set:canceled:true}}, cb
@@ -87,38 +114,7 @@ module.exports = (server) ->
 						(cb) -> col.remove {_id:rsvp}, db.expect('no rsvp',cb,1)
 					],cb
 			], cb
+		add_processor : (p) ->
+			@processors.push p
 
-	server.use 'accounts'
-	users = db.collection 'users'
-	
-	username_or_id = (main,other,cb) ->
-		flow = (q) ->
-			async.waterfall [
-				(cb) -> users.findOne q, cb
-				(doc,args...,cb) -> 
-					return cb('invalid user') unless doc
-					cb(null,doc?._id)
-				main
-			], cb
-
-		try
-			flow {_id:db.ObjectId(other)}
-		catch e
-			flow {name:other}
-		
-	rpc.rsvp =
-		__check__ : (client) -> rpc.auth.__check__(client)
-
-		issue : (client,other,what,cb) ->
-			@assert_fn cb
-			main = (other,cb) ->
-				RSVP.issue {db:'users',id:client.auth}, {db:'users',id:other}, what, cb
-			username_or_id main, other, cb
-
-		reply : (client,rsvp,action,cb) ->
-			@assert_fn cb
-			RSVP.reply {db:'users',id:client.auth},rsvp,action,cb
-
-		cancel : (client,rsvp,cb) ->
-			@assert_fn cb
-			RSVP.cancel {db:'users',id:client.auth},rsvp,cb
+	server.rsvp = new RSVP()

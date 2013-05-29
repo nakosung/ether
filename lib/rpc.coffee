@@ -12,6 +12,11 @@ module.exports = (server) ->
 
 	rpc.assert_fn.__check__ = false
 
+	rpc.wrap = (check,fn) ->
+		fn.__check__ = check
+		fn
+	rpc.wrap.__check__ = false
+
 	is_permitted = (client,fn) ->
 		c = fn.__check__
 		unless c? 

@@ -1,4 +1,3 @@
-redis = require 'redis'
 publish = require './publish'
 cluster = require 'cluster'
 
@@ -7,18 +6,18 @@ module.exports = (server) ->
 	unless cluster.worker?
 		console.warn 'cluster: not inited, no clusters'.red
 		return
-	
-	redis_pub = redis.createClient()
-	redis_sub = redis.createClient()
-	
-	redis_sub.on 'message', (channel,message) ->
-		[from,args] = JSON.parse message
-		unless from == server.id
-			server.emit channel, args...
+
+	server.use 'redis'
+
+	redis_sub.subscribe 'bridge'			
+	server.redis.sub.on 'message', (channel,message) ->
+		if channel == "bridge"
+			[from,msg,args] = JSON.parse message
+			unless from == server.id
+				server.emit msg, args...
 		
-	server.bridge = (channel) ->
-		redis_sub.subscribe channel
+	server.bridge = (msg) ->				
 		server.on msg, (args...) ->
-			redis_pub.publish channel, JSON.stringify [server.id,args]
+			server.redis.pub.publish channel, JSON.stringify [server.id,msg,args]
 		
 	

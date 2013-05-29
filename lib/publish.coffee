@@ -28,8 +28,7 @@ module.exports = (server) ->
 			@sync()			
 
 		destroy : ->
-			@watch.destroy()
-			@watch = undefined
+			@watch.destroy()			
 
 		grab : (cb) ->
 			internal = (p,cb) =>						
