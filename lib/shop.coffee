@@ -8,7 +8,7 @@ module.exports = (server) ->
 
 	{db,deps,rpc} = server
 
-	sku = db.collection 'sku'
+	skus = db.collection 'sku'
 
 	trade = (buyer,program,cb) ->
 		return cb('invalid program') unless program?.query? and program?.update?
@@ -21,7 +21,8 @@ module.exports = (server) ->
 		buyer_db.update q, program.update, db.expect('condition not met',cb,1)
 
 	server.publishDocs 'sku', (client,cb) ->
-		sku.findAll {}, {program:false}, cb
+		deps.read 'debug'
+		skus.findAll {}, {program:false}, cb
 
 	rpc.shop =
 		__check__ : rpc.auth.__check__
@@ -31,12 +32,16 @@ module.exports = (server) ->
 			__check__ : (client) -> true
 
 			add : (client,doc,cb) ->
-				sku.save save, doc, cb
+				@assert_fn cb
+				skus.save doc, db.expectNot('invalid doc',cb,null)
 
 			update : (client,sku,program,cb) ->
-				sku.update {_id:db.ObjectId(sku)}, {$set:program:program}, db.expect('invalid sku',cb,1)
+				@assert_fn cb
+				console.log sku,JSON.stringify program
+				skus.update {_id:db.ObjectId(sku)}, program, db.expect('invalid sku',cb,1)
 
 			update_simple : (client,sku,opts,cb) ->
+				@assert_fn cb
 				sku = db.ObjectId(sku)
 				price = opts?.price or 0
 				program =
@@ -55,12 +60,13 @@ module.exports = (server) ->
 						update :
 							$inc : money : price
 
-				update client, sku, program, cb 
+				rpc.shop.keeper.update.call @, client, sku, $set:program:program, cb
 
 		buy : (client,sku_id,cb) ->
+			@assert_fn cb
 			sku_id = db.ObjectId(sku_id)
 			async.waterfall [
-				(cb) -> sku.findOne sku_id, db.expectNot('invalid sku',cb,null)
+				(cb) -> skus.findOne sku_id, db.expectNot('invalid sku',cb,null)
 				(doc,cb) -> 
 					return cb('sold out') if doc.soldout
 					return cb('unbuyable') unless doc.program?.buy?
@@ -68,6 +74,7 @@ module.exports = (server) ->
 			], cb
 
 		refund : (client,item,cb) ->
+			@assert_fn cb
 			item = db.ObjectId(item)
 			async.waterfall [
 				(cb) -> db.users.findOne {_id:client.auth,items:$elemMatch:id:item}, db.expectNot('invalid item',cb,null)
@@ -78,7 +85,7 @@ module.exports = (server) ->
 						i = item
 					return cb('internal error') unless i
 					cb(null,i)
-				(item,cb) -> sku.findOne item.sku, db.expectNot('invalid sku',cb,null)
+				(item,cb) -> skus.findOne item.sku, db.expectNot('invalid sku',cb,null)
 				(doc,cb) ->
 					return cb('not refundable') unless doc.program?.refund?
 					refund = _.extend {query:{},update:{}}, doc.program.refund

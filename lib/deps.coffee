@@ -28,7 +28,7 @@ module.exports = (server) ->
 				# for all of dirties
 				for k, v of written
 					w = @watching[k]
-					if w? 							
+					if w? 
 						# all is dirty, listens to everything or we have exact matches.
 						if w == '*' or v == '*' or _.intersection(w,v).length
 							# call user defined function immediately without callback
@@ -65,7 +65,7 @@ module.exports = (server) ->
 
 		# needs something?
 		read : (dep,extra) =>			
-			write @deps, String(dep), String(extra) or '*' if @deps				
+			write @deps, String(dep), String(extra or '*') if @deps				
 
 		write : (dep,extra) ->						
 			unless @written?
@@ -76,7 +76,7 @@ module.exports = (server) ->
 					server.emit 'dep:update', @written
 					@written = undefined
 
-			write @written, String(dep), String(extra) or '*'
+			write @written, String(dep), String(extra or '*')
 
 	server.deps = new Deps()
 	server.bridge? 'dep:update'

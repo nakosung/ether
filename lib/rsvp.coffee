@@ -45,7 +45,7 @@ module.exports = (server) ->
 			async.waterfall [
 				(cb) -> async.parallel jobs, cb
 				(args...,cb) -> issuer_db.findOne {_id:issuer.id,rsvp_issued:$elemMatch:{issuee:issuee,what:what}}, db.expect("pending rsvp",cb,null)
-				(cb) -> col.save doc, cb
+				(x,cb) -> col.save doc, cb
 				(doc,args...,cb) ->
 					return cb('rsvp creation err') unless doc
 					async.parallel [
@@ -64,7 +64,7 @@ module.exports = (server) ->
 				(cb) -> issuee_db.findOne {_id:issuee.id,rsvp_have:$elemMatch:rsvp:rsvp}, db.expectNot("?",cb,null)
 
 				# find rsvp from collection
-				(cb) -> col.findAndModify {query:{_id:rsvp,canceled:null,replied:null}, update:{$set:replied:action}}, cb
+				(x,cb) -> col.findAndModify {query:{_id:rsvp,canceled:null,replied:null}, update:{$set:replied:action}}, cb
 
 				# main
 				(doc,args...,cb) => 					
@@ -98,7 +98,7 @@ module.exports = (server) ->
 				(cb) -> issuer_db.findOne {_id:issuer.id,rsvp_issued:$elemMatch:rsvp:rsvp}, db.expectNot("?",cb,null)
 
 				# find rsvp from collection
-				(cb) -> col.findAndModify {query:{_id:rsvp,canceled:null,replied:null}, update:{$set:canceled:true}}, cb
+				(_d,cb) -> col.findAndModify {query:{_id:rsvp,canceled:null,replied:null}, update:{$set:canceled:true}}, cb
 				
 				# clean up
 				(doc,args...,cb) ->					

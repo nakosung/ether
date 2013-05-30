@@ -55,7 +55,6 @@ module.exports = (server,opt) ->
 
 				invalidate : (q) ->
 					extra = q._id if q? and q._id instanceof db.ObjectId		
-
 					server.deps.write @, extra
 
 					@emit 'update'	
@@ -148,7 +147,7 @@ module.exports = (server,opt) ->
 					for v,i in args						
 						if not _.isUndefined(v) and v != result[i]
 							return cb(error)
-					cb()
+					cb(null,result...)
 
 		expectNot : (error,cb,args...) ->
 			(err,result...) ->		
@@ -159,6 +158,6 @@ module.exports = (server,opt) ->
 					for v,i in args
 						if not _.isUndefined(v) and v == result[i]
 							return cb(error)
-					cb()
+					cb(null,result...)
 
 	new Instance()

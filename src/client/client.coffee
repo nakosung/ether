@@ -1,7 +1,7 @@
 app = angular.module('client',['ui','ui.bootstrap','ether','ui.directives'])
 
 app.controller 'MainCtrl', ($scope,collection,rpc,autologin,autocol,subscribe) ->	
-	autocol $scope, 'myroom test me sync:stat users_online stats mm rooms mm:stats'	
+	autocol $scope, 'myroom test me sync:stat users_online stats mm rooms mm:stats sku'	
 	$scope.rpc = rpc	
 
 	window.rpc = rpc
