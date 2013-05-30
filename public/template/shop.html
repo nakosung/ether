@@ -1,16 +1,41 @@
-<div class="span6">
-	<h4>SKUs</h4>
-	<ul>
-		<li ng-repeat="sku in sku">
-			{{sku}} <button class="btn" ng-click="rpc.shop.buy(sku._id)">Buy</button>
-		</li>
-	</ul>
+<div class="hero-unit">
+	<div class="row">
+		<div class="span4">
+			<h1>Shop</h1>				
+		</div>
+		<div class="span4">
+			<h4>You have {{me.money|currency:'e'}}</h4>
+			<button class="btn btn-primary" ng-click="rpc.shop.charge(1000)">Charge!</button>
+		</div>
+	</div>
 </div>
-<div class="span6">
-	<h4>Inventory</h4>
-	<ul>
-		<li ng-repeat="item in me.items">
-			{{item}} <button class="btn" ng-click="rpc.shop.refund(item.id)">Refund</button>
-		</li>
-	</ul>
+<div class="row">
+	<div class="span6">
+		<h4>SKUs</h4>
+		<ul>
+			<li ng-repeat="sku in sku">
+				{{sku.name}} {{shop.price}} 
+				<button class="btn" ng-click="rpc.shop.buy(sku._id)">Buy</button> 
+				<button class="btn btn-warning" ng-show="rpc.shop.keeper" ng-click="edit(sku)">Edit</button>
+			</li>
+		</ul>
+	</div>	
+	<div ng-show="editing" class="span6" ng-include="'template/sku_editor.html'">		
+	</div>
+	<div ng-hide="editing" class="span6">
+		<h4>Inventory</h4>
+		<ul>
+			<li ng-repeat="item in me.items">
+				{{item.sku}} <button class="btn" ng-click="rpc.shop.refund(item.id)">Refund</button>
+			</li>
+		</ul>
+	</div>	
+</div>
+<div class="row" ng-controller="ShopKeeperCtrl">
+	<div class="span6">
+		<h4>
+			Shop keeper
+		</h4>
+		<div ng-include="'template/sku_editor.html'"></div>
+	</div>	
 </div>

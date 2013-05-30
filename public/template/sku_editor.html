@@ -1,0 +1,19 @@
+<form class="form-horizontal" ng-controller="SKUEditorCtrl">
+	<div class="control-group">
+		<label for="name" class="control-label">Name</label>
+		<div class="controls">
+			<input name="name" type="text" ng-model="target.name">
+		</div>
+	</div>			
+	<div class="control-group">
+		<label for="price" class="control-label">Price</label>
+		<div class="controls">
+			<input name="price" type="text" ng-model="target.price">
+		</div>
+	</div>			
+	<div class="control-group">
+		<div class="controls">
+			<button class="btn" ng-repeat="(k,v) in editing.actions" ng-click="v()">{{k}}</button>			
+		</div>
+	</div>
+</form>

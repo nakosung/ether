@@ -31,14 +31,19 @@ module.exports = (server) ->
 	Client = server.ClientClass
 
 	Client::acquireToken = (k,fn,cb) ->				
+		throw new Error('invalid key') unless _.isString(k)
+		throw new Error('invalid fn') unless _.isFunction(fn) or _.isUndefined(fn)
+		throw new Error('invalid cb') unless _.isFunction(cb)
 		cb ?= ->
 		fn ?= (taker,cb) -> cb()
 		@acquiredTokens ?= []		
 		if @acquiredTokens.indexOf(k) < 0
-			myfn = (taker,cb) =>								
+			myfn = (taker,cb) =>			
 				i = @acquiredTokens.indexOf k				
 				@acquiredTokens.splice(i,1) unless i<0				
 				server.deps.write @
+
+				console.log "LOST_TOKEN", k
 
 				@emit 'lost-token', k, taker		
 				
@@ -54,6 +59,8 @@ module.exports = (server) ->
 				@acquiredTokens.push k				
 				server.deps.write @				
 				cb()
+		else
+			cb('already acquired')
 
 	Client::destroyDependentTokens = (k,cb) ->
 		jobs = []
@@ -104,7 +111,7 @@ module.exports = (server) ->
 					jobs.push (cb) -> server.destroyToken t, cb
 			async.parallel jobs, cb
 		else
-			server.destroyToken t, cb
+			server.destroyToken k, cb
 
 	Client::hasToken = (pat) ->		
 		_.any @acquiredTokens, (x) -> pat.test(x)

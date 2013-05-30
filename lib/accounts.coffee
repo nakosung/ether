@@ -10,9 +10,7 @@ module.exports = (server) ->
 	server.use 'token'
 
 	db = server.db
-	users = db.collection 'users'
-
-	users.org.ensureIndex {name:1}, {unique:true,dropDups:true}	
+	users = db.collection 'users'	
 
 	rpc = @rpc
 
@@ -98,3 +96,6 @@ module.exports = (server) ->
 	setInterval (->		
 		users.update {online:{$ne:null},heartbeat:{$lt:Date.now() - HEARTBEAT_TTL}}, {$unset:online:1}
 		), HEARTBEAT_TTL 
+
+	init : (cb) ->
+		users.org.ensureIndex {name:1}, {unique:true,dropDups:true}, cb

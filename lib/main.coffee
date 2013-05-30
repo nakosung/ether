@@ -1,8 +1,8 @@
-ether = require './lib/ether'
+ether = require './ether'
 _ = require 'underscore'
 async = require 'async'
 
-plugins = 'coffee-script express cluster mongodb rpc stats accounts'.split(' ')	
+plugins = 'express cluster mongodb rpc stats accounts'.split(' ')	
 opts = 
 	express : 
 		port : 3338
@@ -29,12 +29,17 @@ server?.use 'room'
 server?.use 'friends'
 server?.use 'matchmaking'
 server?.use 'shop'
+server?.use 'world'
 
 if server
 	{db,rpc,deps} = server
 	
 	article_test (db.collection 'mycollection'), rpc.auth
 
-	server.initialize()
+	server.initialize (err) ->
+		if err
+			process.exit 'error'
+		else
+			console.log 'we are all online'.bold
 
 	

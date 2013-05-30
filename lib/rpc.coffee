@@ -56,7 +56,7 @@ module.exports = (server) ->
 				cb = (r...) -> 
 					unless trid == null
 						client.send rpc:[trid,r...] 
-					else 
+					else if trid != -1						
 						if r.length and r[0]
 							client.send error:String(r[0])
 						else

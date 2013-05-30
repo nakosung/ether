@@ -127,8 +127,8 @@ ether.factory 'rpc', (sockjs,$rootScope,collection) ->
 		if collection == rpc_dir
 			delete instance[k] for k of instance
 			for method,v of collection.data
-				do (method) ->					
-					fn = instance[method] = (args...,cb) ->
+				do (method) ->				
+					G = (args...,cb) ->
 						trid = null
 						if cb?
 							if _.isFunction(cb)
@@ -141,6 +141,12 @@ ether.factory 'rpc', (sockjs,$rootScope,collection) ->
 						t.rpc[method] = [trid,args...]
 						console.log t.rpc
 						sockjs.send t
+					G.unreliable = (args...) ->						
+						t = rpc:{}						
+						t.rpc[method] = [-1,args...]						
+						sockjs.send t
+
+					fn = instance[method] = G
 					o = method.split(':')
 					if o.length > 1
 						i = instance

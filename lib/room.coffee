@@ -125,7 +125,8 @@ module.exports = (server) ->
 
 				kick : (client,opp,cb) ->					
 					@assert_fn(cb)
-					return cb("can't kick yourself") if String(opp) == String(client.auth)
+					opp = db.ObjectId(opp)
+					return cb("can't kick yourself") if opp.equals(client.auth)
 					server.destroyToken 'room:' + db.ObjectId(opp), cb
 
 			chat : (client,msg,cb) ->

@@ -1,0 +1,24 @@
+<div class="hero-unit">
+	<div class="row">
+		<div class="span4">								
+			<h1><span>Hello, {{me.name}}</span></h1>			
+		</div>
+		<div class="span6" ng-show="me" ng-include="'template/matchmaker.html'"></div>
+	</div>
+</div>
+<div>
+	numConnections : {{stats.numClients}}			
+	sync-stats : {{sync_stat}}
+	<li ng-repeat="x in users_online">
+		{{x}}				
+	</li>
+</div>		
+<div class="row">
+	<div class="span6">
+		<div ng-hide="!myroom" ng-include="'template/room.html'" ng-controller="RoomCtrl"></div>
+		<div ng-hide="myroom" ng-include="'template/lobby.html'"></div>
+		<div ng-include="'template/board.html'"></div>
+	</div>
+	<div class="span6" ng-include="'template/friends.html'" ng-controller="FriendsCtrl">
+	</div>
+</div>			

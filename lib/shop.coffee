@@ -1,28 +1,57 @@
 # this module sells!
 async = require 'async'
+_ = require 'underscore'
+
+INITIAL_MONEY = 10000
 
 module.exports = (server) ->
 	server.use 'rpc'
-	server.use 'deps'
-	server.use 'rpc'
+	server.use 'deps'	
 
 	{db,deps,rpc} = server
 
-	skus = db.collection 'sku'
+	skus = db.collection 'sku'		
 
 	trade = (buyer,program,cb) ->
 		return cb('invalid program') unless program?.query? and program?.update?
 
-		buyer_db = db[buyer].db
+		buyer_db = db[buyer.db]
 		return cb('invalid buyer') unless buyer_db? and buyer.id?
 
 		q = _.extend {}, program.query
 		q._id = buyer.id
+		console.log q, program.update
 		buyer_db.update q, program.update, db.expect('condition not met',cb,1)
 
 	server.publishDocs 'sku', (client,cb) ->
 		deps.read 'debug'
 		skus.findAll {}, {program:false}, cb
+
+	program = 		
+		buy : (doc) ->
+			price = parseFloat(doc.price) or 0
+			query :
+				money : $gte : price
+				items : $not : $elemMatch : sku : doc._id
+			update :
+				$push : items : 
+					id : doc._id
+					sku : doc._id
+					purchased : Date.now()
+					seller : server.id
+				$inc : money : -price
+		refund : (doc,item) ->
+			price = parseFloat(doc.price) or 0
+			query :
+				items:$elemMatch:id:item
+			update :
+				$inc:money:price
+				$pull:items:id:item
+
+	# everybody should have some money!
+	server.on 'client:join', (client) ->
+		client.on 'login', ->
+			db.users.update {_id:client.auth,money:$not:$exists:true}, {$set:money:INITIAL_MONEY}, ->
 
 	rpc.shop =
 		__check__ : rpc.auth.__check__
@@ -35,32 +64,13 @@ module.exports = (server) ->
 				@assert_fn cb
 				skus.save doc, db.expectNot('invalid doc',cb,null)
 
-			update : (client,sku,program,cb) ->
+			update : (client,sku,doc,cb) ->
 				@assert_fn cb
-				console.log sku,JSON.stringify program
-				skus.update {_id:db.ObjectId(sku)}, program, db.expect('invalid sku',cb,1)
+				doc._id = db.ObjectId(doc._id)
+				skus.save doc, db.expect('invalid sku',cb,1)			
 
-			update_simple : (client,sku,opts,cb) ->
-				@assert_fn cb
-				sku = db.ObjectId(sku)
-				price = opts?.price or 0
-				program =
-					buy :
-						query :
-							$gte : money : price
-							items : $not : $elemMatch : sku : sku
-						update :
-							$push : items : 
-								id : sku
-								sku : sku
-								purchased : Date.now()
-								seller : server.id
-							$inc : money : -price
-					refund : 
-						update :
-							$inc : money : price
-
-				rpc.shop.keeper.update.call @, client, sku, $set:program:program, cb
+		charge : (client,amount,cb) ->
+			db.users.update {_id:client.auth}, {$inc:money:amount}, db.expect('failed',cb,1)
 
 		buy : (client,sku_id,cb) ->
 			@assert_fn cb
@@ -68,9 +78,10 @@ module.exports = (server) ->
 			async.waterfall [
 				(cb) -> skus.findOne sku_id, db.expectNot('invalid sku',cb,null)
 				(doc,cb) -> 
-					return cb('sold out') if doc.soldout
-					return cb('unbuyable') unless doc.program?.buy?
-					trade {db:'users', id:client.auth}, doc.program.buy, cb
+					p = program.buy(doc)
+					return cb('sold out') if doc.soldout					
+					return cb('unbuyable') unless p
+					trade {db:'users', id:client.auth}, p, cb
 			], cb
 
 		refund : (client,item,cb) ->
@@ -80,16 +91,19 @@ module.exports = (server) ->
 				(cb) -> db.users.findOne {_id:client.auth,items:$elemMatch:id:item}, db.expectNot('invalid item',cb,null)
 				(doc,cb) ->
 					i = null
-					doc.items.forEach (item) ->
-						return unless item.id == item
-						i = item
+					doc.items.forEach (ii) ->
+						return unless ii.id.equals(item)
+						i = ii
 					return cb('internal error') unless i
 					cb(null,i)
-				(item,cb) -> skus.findOne item.sku, db.expectNot('invalid sku',cb,null)
-				(doc,cb) ->
-					return cb('not refundable') unless doc.program?.refund?
-					refund = _.extend {query:{},update:{}}, doc.program.refund
-					_.extend refund.query, items:$elemMatch:id:item
-					_.extend refund.update, $unset:'items.$':1
-					trade {db:'users', id:client.auth}, refund, cb
+				(item,cb) -> 
+					console.log item
+					skus.findOne {_id:db.ObjectId(item.sku)}, db.expectNot('invalid sku',cb,null)
+				(doc,cb) ->					
+					p = program.refund(doc,item)
+					return cb('not refundable') unless p										
+					trade {db:'users', id:client.auth}, p, cb
 			], cb
+
+	init : (cb) ->
+		skus.ensureIndex {name:1}, {unique:true,dropDups:true}, cb
