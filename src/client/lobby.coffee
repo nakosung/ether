@@ -1,3 +1,5 @@
+require './ether'
+
 app = angular.module('lobby',['ui','ui.bootstrap','ether','ui.directives'])
 
 	# $scope.$watch ->		

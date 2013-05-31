@@ -2,8 +2,13 @@ module.exports = (grunt) ->
 	grunt.initConfig
 		watch:
 			client:
-				files: 'src/**/*.coffee'
+				files: 'src/client/*.coffee'
 				tasks: ['client']
+				options:
+					interrupt:yes
+			shared:
+				files: 'src/shared/*.coffee'
+				tasks: ['shared']
 				options:
 					interrupt:yes
 			server:
@@ -12,13 +17,22 @@ module.exports = (grunt) ->
 				options:
 					interrupt:yes
 		coffee:
+			shared:
+				options:
+					bare:yes
+					sourceMap:true
+				expand:true
+				cwd:'src'
+				src:['shared/*.coffee']
+				dest:'build/'
+				ext:'.js'
 			client:
 				options:
 					bare:yes
 					sourceMap:true
 				expand:true
 				cwd:'src'
-				src:['**/*.coffee']
+				src:['client/*.coffee']
 				dest:'build/'
 				ext:'.js'
 			server:
@@ -32,7 +46,7 @@ module.exports = (grunt) ->
 				ext:'.js'
 		shell:
 			browserify:
-				command: 'browserify build/client/app.js build/client/ether.js build/client/client.js build/client/world.js -o public/lib/bundle.js'
+				command: 'browserify build/client/app.js -o public/lib/bundle.js'
 				options:
 					stdout:true
 					stderr:true
@@ -59,6 +73,7 @@ module.exports = (grunt) ->
 	grunt.loadNpmTasks 'grunt-shell-spawn'
 		
 	grunt.registerTask 'client', ['coffee:client','shell:browserify']	
+	grunt.registerTask 'shared', ['coffee:shared','shell:browserify']
 	grunt.registerTask 'test', ['mochaTest']
 	grunt.registerTask 'server', ['coffee:server']
 	grunt.registerTask 'default', ['shell:run','watch']

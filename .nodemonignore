@@ -1,4 +1,4 @@
 /lib/**/*
 /public/*
 /src/client/*
-/build/client/**/*
+/build/client/**
