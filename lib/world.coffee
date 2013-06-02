@@ -95,6 +95,8 @@ module.exports = (server) ->
 			@send spawn:id:@id,pos:@pos
 			@chunks = {}
 
+			@world.touch(@)
+
 		sub_chunk : (key,cb) ->			
 			return cb('already subed') if @chunks[key]
 
@@ -125,19 +127,44 @@ module.exports = (server) ->
 
 		unsubAllChunks : ->
 			for k,v of @chunks
-				v()
+				v?()
 
 			@chunks = {}			
 
 		put : (type,cb) ->
-			if @map.is_empty @pos.x, @pos.y-1 and @map.is_empty @pos.x, @pos.y+1							
-				@vel.y = 0
+			nx = Math.floor @pos.x + 0.5
+			ny = Math.floor @pos.y + 0.5
+			if @map.get_block_type(nx,ny+1) == 0							
+				@vel.y = -1
 				tx = @pos.x
 				ty = @pos.y + 1				
+				@pos.y = ny
 				async.waterfall [
 					(cb) => @map.get_chunk_abs tx, ty, cb
-					(chunk,cb) => chunk.set_block_type tx & CHUNK_SIZE_MASK, ty & CHUNK_SIZE_MASK, type, cb
-					(cb) => @see @
+					(chunk,cb) => 
+						chunk.set_block_type tx & CHUNK_SIZE_MASK, ty & CHUNK_SIZE_MASK, type
+						@see @
+						cb()
+				], cb
+			else
+				cb('invalid')
+		dig : (dir,cb) ->
+			nx = Math.floor @pos.x + 0.5
+			ny = Math.floor @pos.y + 0.5
+			dir = new Vector dir
+			tx = nx + dir.x
+			ty = ny + dir.y
+
+			type = 0
+			if @map.get_block_type(tx,ty) != 0
+				async.waterfall [
+					(cb) => @map.get_chunk_abs tx, ty, cb
+					(chunk,cb) => 
+						chunk.set_block_type tx & CHUNK_SIZE_MASK, ty & CHUNK_SIZE_MASK, type
+						@flying = true
+						@world.touch(@)
+						@see @
+						cb()
 				], cb
 			else
 				cb('invalid')
@@ -155,21 +182,26 @@ module.exports = (server) ->
 			@send update: id:other.id, pos:other.pos, vel:other.vel, age:other.age
 
 		update : (p,cb) ->			
-			@vel.set p.vel if p.vel?
-
-			@world.touch(@)
-
 			# adjust client position if necessary
+			if p.vel?
+				if not @vel.equals p.vel
+					@vel.set p.vel
+					if p.vel.y
+						p.flying = true
+					@world.touch(@)
 			if p.pos?
 				claim = new Vector(p.pos)
 				error = claim.sub(@pos).size()				
 
 				# allowed_latent_ticks = latency / deltaTime (= 1000/framerate)
-				upper_bound = @vel.size() * config.allowed_latency * config.framerate / 1000 + 0.01
+				margin = @vel.size()
+				if @active
+					margin += 1
+				upper_bound = margin * config.allowed_latency * config.framerate / 1000
 
 				if error > upper_bound
-					console.log 'adjust pos', error, upper_bound
-					@send update: id:@id,pos:@pos,age:@age			
+					console.log 'adjust pos', @pos,p.pos,error, upper_bound
+					@send update: id:@id,pos:@pos,age:@age,flying:@flying
 
 			cb()
 
@@ -244,6 +276,8 @@ module.exports = (server) ->
 			__check__ : (client) -> client.avatar?
 			put : (client,type,cb) ->
 				client.avatar.put type, cb
+			dig : (client,dir,cb) ->
+				client.avatar.dig dir, cb
 				
 		update : (client,p,cb) ->
 			return cb('invalid state') unless client.avatar?

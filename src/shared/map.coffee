@@ -87,17 +87,14 @@ class Map
 			else
 				x = x[0]
 				y = y[0]				
-				subx = x & CHUNK_SIZE_MASK
-				suby = y & CHUNK_SIZE_MASK				
-				chunk = (@get_chunk_abs x,y)
-				if chunk
-					type = chunk.get_block_type(subx,suby) 
-					console.log type, subx, suby
-					type == 0
-				else 
-					console.log 'chunk not available'
-					false
-
+				@get_block_type(x,y) == 0
+	
+	get_block_type : (x,y) ->
+		subx = x & CHUNK_SIZE_MASK
+		suby = y & CHUNK_SIZE_MASK				
+		chunk = (@get_chunk_abs x,y)
+		chunk?.get_block_type(subx,suby) 
+		
 	generate : (chunk,cb) ->
 		throw new Error('Not implemented')
 

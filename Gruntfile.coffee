@@ -46,7 +46,8 @@ module.exports = (grunt) ->
 				ext:'.js'
 		shell:
 			browserify:
-				command: 'browserify build/client/app.js -o public/lib/bundle.js'
+				command: 'browserify -d build/client/app.js -o public/lib/bundle.js'
+				#command: "browserify -d -t coffeeify src/client/app.coffee -o public/lib/bundle.js"
 				options:
 					stdout:true
 					stderr:true
@@ -77,6 +78,7 @@ module.exports = (grunt) ->
 	grunt.registerTask 'test', ['mochaTest']
 	grunt.registerTask 'server', ['coffee:server']
 	grunt.registerTask 'default', ['shell:run','watch']
+	grunt.registerTask 'make', ['shared','server','client']
 
 	# watching server folder
 	

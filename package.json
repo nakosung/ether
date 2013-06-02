@@ -15,7 +15,9 @@
     "mongoose": "~3.6.11",
     "trueskill": "0.0.2",
     "node-watch": "~0.3.3",
-    "buffer-browserify": "0.0.5"
+    "buffer-browserify": "0.0.5",
+    "source-map-support": "~0.1.5",
+    "coffeeify": "~0.4.1"
   },
   "devDependencies": {
     "grunt": "~0.4.1",

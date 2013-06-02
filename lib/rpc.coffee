@@ -70,10 +70,10 @@ module.exports = (server) ->
 						try
 							rr.fn.call rpc, client,args...,cb				
 						catch e
-							if e instanceof ReferenceError
+							if e instanceof ReferenceError or e instanceof TypeError
 								throw e
 							else
-								console.error e.error
+								console.error e
 								cb(e.error)						
 					else
 						console.log 'no permission', client.id, k

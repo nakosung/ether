@@ -1,7 +1,7 @@
 require './ether'
 {Vector} = require '../shared/vector'
 {Entity} = require '../shared/entity'
-{Map,CHUNK_SIZE_MASK} = require '../shared/map'
+{Map,CHUNK_SIZE_MASK,CHUNK_SIZE_BIT} = require '../shared/map'
 _ = require 'underscore'
 TILE_SIZE = 24
 
@@ -18,12 +18,33 @@ app.directive 'playground', ->
 		$(element).width(width).height(height)		
 		$(element).playground {height: height, width: width, refreshRate: 1000/refreshRate, keyTracker: true}
 
-		instance = new scope[attrs.runner] scope, $.playground(), width:width,height:height,refreshRate:refreshRate		
-		
-		scope.$on '$destroy', ->
+		instance = null
+
+		console.log 'playground created'
+
+		init = ->
+			return if instance
+			instance = new scope[attrs.runner] scope, $.playground(), width:width,height:height,refreshRate:refreshRate		
+
+		uninit = ->
+			return unless instance
 			$.playground().pauseGame()
 			$.playground().clearAll(true)
 			instance.destroy()
+			instance = null
+
+		init()
+
+		A = scope.$on 'sockjs.offline', ->
+			uninit()
+
+		B = scope.$on 'sockjs.online', ->
+			init()
+		
+		scope.$on '$destroy', ->
+			A()
+			B()
+			uninit()
 
 app.factory 'world', (rpc,autocol,$rootScope) ->	
 	class ClientEntity extends Entity
@@ -86,7 +107,14 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 					when 'block_meta' then chunk.set_block_meta args...
 
 				if _.contains(@visible_chunks,chunk)
-					@needsRedraw = true
+					[x,y] = args
+					xx = (chunk.X << CHUNK_SIZE_BIT) + x
+					yy = (chunk.Y << CHUNK_SIZE_BIT) + y
+					sx = xx - @x
+					sy = yy - @y
+					type = chunk.get_block_type x,y	
+					console.log x,y,xx,yy,sx,sy,chunk.X,chunk.Y,@x,@y	
+					@tiles[sx][sy].setAnimation @blocks[type]
 
 			if buf				
 				chunk.buffer = buf
@@ -125,24 +153,27 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 		constructor : (@scope, @pg,@opts) ->
 			@entities = {}			
 
+			console.log 'creating a world'
+
 			@map = new ClientMap(@pg,width:@opts.width,height:@opts.height)
 
 			enter = =>
 				console.log 'trying to enter'
 				if rpc.world?.enter?
+					@handler?()
+					@handler = null
+
 					rpc.world.enter (err,server_settings) =>
 						@server_settings = server_settings
 						console.log 'enter returned', err, server_settings
 						if err
 							console.error(err)
 						else
-							@handler?()
-							@handler = null
 							@init()
 				else
-					console.log 'no rpc for now'
+					console.error 'no rpc for now'
 
-			@handler = $rootScope.$on 'rpc:update', => enter()
+			@handler = $rootScope.$on 'rpc:update', (x) => enter()
 
 			enter()
 
@@ -205,6 +236,8 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 							@map.set_pos 0,0			
 						else
 							console.error('INIT FAILED')
+				else
+					console.error 'error!'
 
 		measureTimeDiffAndRoundtrip : (cb) ->
 			clientTime = Date.now()
@@ -251,8 +284,18 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 				if @keypressed 'space'
 					@avatar.jump 1
 
-				if @keypressed 'down'
+				if @keypressed 'up'
 					rpc.world.actions.put 2
+
+				if @keypressed 'down'
+					dir = new Vector 0,1
+					if @keypressed 'left'
+						dir = new Vector -1, 0
+					else if @keypressed 'right'
+						dir = new Vector 1, 0
+					else if @keypressed 'up'
+						dir = new Vector 0, -1
+					rpc.world.actions.dig(dir)
 
 			@currentTick ?= 0
 			@currentTick += deltaTick

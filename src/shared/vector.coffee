@@ -15,7 +15,8 @@ class Vector
 				@y = a.y
 			else 
 				@x = a
-				@y = b		
+				@y = b
+				@y ?= a
 		else
 			@zero()
 
@@ -31,16 +32,32 @@ class Vector
 	mad : (k,v) ->
 		new Vector v.x * k + @x, v.y * k + @y
 
+	floor : () ->
+		new Vector Math.floor(@x), Math.floor(@y)
+
 	equals : (v) ->
 		@x == v.x and @y == v.y
 
 	square : ->			
 		@x * @x + @y * @y
 
+	elem : (i,val) ->
+		if val == undefined
+			switch i
+				when 0 then @x
+				when 1 then @y
+		else
+			switch i
+				when 0 then @x = val
+				when 1 then @y = val
+			@
+
 	size : ->
 		Math.sqrt @square()
 
 	zero : ->
 		@x = @y = 0
+
+Vector.dim = 2
 
 module.exports.Vector = Vector

@@ -1,17 +1,17 @@
 express = require 'express'		
 http = require 'http'
 watch = require 'node-watch'
+_ = require 'underscore'
 
 module.exports = (server,opts) ->
 	@use 'sockjs'
 
 	timer = null
-	fileUpdated = =>
-		unless timer
-			timer = setTimeout (=>
-				timer = null
-				@emit 'client-src:changed'
-				), 100					
+	fileUpdated = (f) =>
+		console.log 'client file changed'.bold.red, f.bold.green
+		@emit 'client-src:changed'
+
+	fileUpdated = _.debounce fileUpdated, 500					
 
 	app = express()		
 	app.use '/', express.static('public')
