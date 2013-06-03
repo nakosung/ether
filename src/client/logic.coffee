@@ -40,13 +40,13 @@ class ClientMap extends Map
 
 		@blocks = {}
 		@blocks[0] = null
-		@blocks[1] = new $.gQ.Animation imageURL:'img/24x24.gif'
-		@blocks[2] = new $.gQ.Animation imageURL:'img/24x24.gif'
+		@blocks[1] = new $.gQ.Animation imageURL:'img/tiles24x24.png', offsetx:24*22, offsety:24*21
+		@blocks[2] = new $.gQ.Animation imageURL:'img/tiles24x24.png', offsetx:24*14, offsety:24*23
 
 		for x in [0..31]
 			@tiles.push [0..31].map (y) =>
 				sprite_id = "map#{x}_#{y}"
-				@pg.addSprite sprite_id, posx:TILE_SIZE*x,posy:TILE_SIZE*y,animation:null,geometry:$.gQ.GEOMETRY_RECTANGLE
+				@pg.addSprite sprite_id, posx:TILE_SIZE*x,posy:TILE_SIZE*y,width:TILE_SIZE,height:TILE_SIZE,animation:null,geometry:$.gQ.GEOMETRY_RECTANGLE
 				$("#"+sprite_id)
 
 		@visible_chunks = []

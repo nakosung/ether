@@ -3,6 +3,8 @@ require './ether'
 _ = require 'underscore'
 logic = require './logic'
 
+TILE_SIZE = 24
+
 app = angular.module('world',['ui','ui.bootstrap','ether','ui.directives'])
 
 app.directive 'playground', ->
@@ -83,7 +85,7 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 			{id,pos,vel,age} = opt
 			@entities[opt.id] = e = new logic.ClientEntity(@map,id,pos,vel,age)
 			sprite_id = "sprite#{@sprite_id++}"
-			@pg.addSprite sprite_id, posx:e.pos.x,posy:e.pos.y,animation:@block,geometry:$.gQ.GEOMETRY_RECTANGLE
+			@pg.addSprite sprite_id, posx:e.pos.x,posy:e.pos.y,width:TILE_SIZE,height:TILE_SIZE,animation:@block,geometry:$.gQ.GEOMETRY_RECTANGLE
 			e.sprite = $("#"+sprite_id)		
 
 			@updateEntity opt
@@ -106,7 +108,7 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 
 		init : ->			
 			@initialized = true
-			@block = new $.gQ.Animation imageURL:'img/24x24.gif'		
+			@block = new $.gQ.Animation imageURL:'img/tiles24x24.png', offsetx:24*0, offsety:24*9
 			
 			@pg.startGame()
 
@@ -213,8 +215,8 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 			if @angular_spin-- < 0
 				@angular_spin = @opts.refreshRate / 4							
 				@scope.stats = 
-					x : @avatar?.x
-					y : @avatar?.y
+					x : @avatar?.pos.x
+					y : @avatar?.pos.y
 				@scope.$apply()
 
 			false
