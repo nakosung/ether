@@ -35,6 +35,20 @@ class Vector
 	floor : () ->
 		new Vector Math.floor(@x), Math.floor(@y)
 
+	abs : () ->
+		new Vector Math.abs(@x), Math.floor(@y)
+
+	max_elem : ->
+		if @x > @y 
+			0
+		else 
+			1
+	min_elem : ->
+		if @x < @y
+			0
+		else
+			1
+
 	equals : (v) ->
 		@x == v.x and @y == v.y
 
@@ -57,6 +71,10 @@ class Vector
 
 	zero : ->
 		@x = @y = 0
+
+	dot : (v) ->
+		v.x * @x + v.y * @y
+
 
 Vector.dim = 2
 

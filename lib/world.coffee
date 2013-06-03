@@ -2,13 +2,19 @@ async = require 'async'
 {Vector} = require './shared/vector'
 {Entity} = require './shared/entity'
 {Map,CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
+_ = require 'underscore'
 
-module.exports = (server) ->
+module.exports = (server,opts) ->
 	server.use 'accounts'
+	server.use 'mongodb'
 
-	{rpc,deps} = server
+	delay_save_chunk = opts?.delay_save_chunk or 5000
+
+	{rpc,deps,db} = server
 
 	world = null	
+
+	chunk_db = db.collection 'chunk'
 
 	config = 
 		allowed_latency : 1000
@@ -16,14 +22,26 @@ module.exports = (server) ->
 
 	class ServerMap extends Map
 		generate : (chunk,cb) ->
-			for y in [0..(CHUNK_SIZE-1)]
-				for x in [0..(CHUNK_SIZE-1)]
+			fn = => 
+				console.log 'saving chunk', chunk.key
+				chunk_db.save {_id:chunk.key,raw:chunk.buffer.toString()}
+			fn = _.debounce(fn,delay_save_chunk)
 
-					xx = x + (chunk.X * CHUNK_SIZE)
-					yy = y + (chunk.Y * CHUNK_SIZE)
+			chunk_db.findOne {_id:chunk.key}, (err,doc) =>
+				if err or doc == null
+					for y in [0..(CHUNK_SIZE-1)]
+						for x in [0..(CHUNK_SIZE-1)]
 
-					chunk.set_block_type x, y, if yy > 13 or xx == 3 and yy < 5 then 1 else 0			
-			cb()
+							xx = x + (chunk.X * CHUNK_SIZE)
+							yy = y + (chunk.Y * CHUNK_SIZE)
+
+							chunk.set_block_type x, y, if yy > 13 or xx == 3 and yy < 5 then 1 else 0
+					chunk.on 'changed', fn
+					cb()
+				else
+					chunk.buffer = new Buffer(doc.raw)
+					chunk.on 'changed', fn
+					cb()
 
 	class World
 		constructor : ->
@@ -82,7 +100,7 @@ module.exports = (server) ->
 
 	class Avatar extends Entity
 		constructor : (@world,@client) ->			
-			super @world.map, client.id, new Vector Math.floor(Math.random() * 20), Math.floor(Math.random() * 20)
+			super @world.map, client.id, new Vector Math.floor(Math.random() * 10), Math.floor(Math.random() * 10)
 
 			@age = 0
 			@id = client.id
@@ -131,14 +149,13 @@ module.exports = (server) ->
 
 			@chunks = {}			
 
-		put : (type,cb) ->
+		put : (dir,type,cb) ->
 			nx = Math.floor @pos.x + 0.5
 			ny = Math.floor @pos.y + 0.5
-			if @map.get_block_type(nx,ny+1) == 0							
-				@vel.y = -1
-				tx = @pos.x
-				ty = @pos.y + 1				
-				@pos.y = ny
+			dir = new Vector dir
+			tx = nx + dir.x
+			ty = ny + dir.y
+			if @map.get_block_type(nx,ny+1) == 0
 				async.waterfall [
 					(cb) => @map.get_chunk_abs tx, ty, cb
 					(chunk,cb) => 
@@ -184,10 +201,11 @@ module.exports = (server) ->
 		update : (p,cb) ->			
 			# adjust client position if necessary
 			if p.vel?
-				if not @vel.equals p.vel
-					@vel.set p.vel
-					if p.vel.y
-						p.flying = true
+				if not @vel.equals p.vel										
+					if p.vel.y < 0
+						@flying = true						
+						@vel.y = Math.min(@vel.y,p.vel.y)						
+					@vel.x = p.vel.x
 					@world.touch(@)
 			if p.pos?
 				claim = new Vector(p.pos)
@@ -202,6 +220,9 @@ module.exports = (server) ->
 				if error > upper_bound
 					console.log 'adjust pos', @pos,p.pos,error, upper_bound
 					@send update: id:@id,pos:@pos,age:@age,flying:@flying
+				else unless @pos.equals claim
+					@world.touch(@)
+					@pos = claim
 
 			cb()
 
@@ -274,8 +295,8 @@ module.exports = (server) ->
 
 		actions :
 			__check__ : (client) -> client.avatar?
-			put : (client,type,cb) ->
-				client.avatar.put type, cb
+			put : (client,dir,type,cb) ->
+				client.avatar.put dir, type, cb
 			dig : (client,dir,cb) ->
 				client.avatar.dig dir, cb
 				

@@ -3,6 +3,7 @@
 physics = require './physics'
 
 gravity = new Vector 0,0.25 # carefully selected to keep mantissa happy (log 2)
+TERMINAL_VELOCITY = 0.75
 
 class Entity
 	constructor : (@map,@id,pos,vel) ->			
@@ -16,35 +17,42 @@ class Entity
 	tick : (deltaTick) ->				
 		dirty = false		
 
-		if @is_flying() or @vel.y
-			#console.log deltaTick, @vel, @vel.mad deltaTick, gravity
-			@vel = @vel.mad deltaTick, gravity
-
-		# curPos can occupy several blocks max upto 2^dim
-		# newPos also occupied upto 2^dim
+		#if @is_flying() 
+		@vel = @vel.mad deltaTick, gravity
+		if @vel.y > TERMINAL_VELOCITY
+			@vel.y = TERMINAL_VELOCITY
 
 		c = (x,y) => @map.get_block_type(x,y) != 0
 
 		is_solid = (p) => @map.get_block_type(p.x,p.y) != 0
 
-		if @vel.x 
-			console.log @vel, @pos
+		
+		delta = @vel.mul deltaTick
+		#console.log "tick", @id, @pos, @vel, @flying, delta
+		
+		while delta.size()			
+			#console.log 'gogo'
+			try
+				[@pos,new_delta] = physics.walk @pos, delta, is_solid					
+				#console.log [@pos,new_delta]
+				if new_delta.size()				
+					dirty = true
+					if new_delta.x
+						@vel.x = 0
+					if new_delta.y
+						if @vel.y > 0
+							#console.log 'clear flying'
+							@flying = false
+						@vel.y = 0					
+				if delta.equals new_delta
+					break
+				delta = new_delta
+			catch e
+				console.error e
+			
 
-		while @vel.size() > 0
-			newPos = @pos.mad deltaTick, @vel
-			altered = physics.sweep @pos, newPos, is_solid
-
-			if altered
-				if altered.x != newPos.x
-					@vel.x = 0
-				if altered.y != newPos.y
-					@vel.y = 0
-
-				dirty = true
-				@pos = altered
-			else
-				@pos = newPos
-				break
+		# unless dirty or @flying or @vel.size()
+		# 	console.log 'freeze', @pos, @vel, delta, @flying
 		
 		dirty or @flying or @vel.size()
 
