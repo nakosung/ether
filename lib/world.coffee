@@ -2,6 +2,7 @@ async = require 'async'
 {Vector} = require './shared/vector'
 {Entity} = require './shared/entity'
 {Map,CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
+events = require 'events'
 _ = require 'underscore'
 
 module.exports = (server,opts) ->
@@ -9,6 +10,8 @@ module.exports = (server,opts) ->
 	server.use 'mongodb'
 
 	delay_save_chunk = opts?.delay_save_chunk or 5000
+	delay_cold_chunk = opts?.delay_cold_chunk or 5000
+	world_shutdown_delay = opts?.world_shutdown_delay or 60000
 
 	{rpc,deps,db} = server
 
@@ -22,10 +25,21 @@ module.exports = (server,opts) ->
 
 	class ServerMap extends Map
 		generate : (chunk,cb) ->
-			fn = => 
-				console.log 'saving chunk', chunk.key
-				chunk_db.save {_id:chunk.key,raw:chunk.buffer.toString()}
-			fn = _.debounce(fn,delay_save_chunk)
+			init = (cb) =>
+				## AUTO CHECK-IN
+				fn = =>					
+					async.series [
+						(cb) => chunk_db.save {_id:chunk.key,raw:chunk.buffer.toString()}, cb
+						(cb) => if chunk.numSubs == 0
+							console.log 'drop off chunk', chunk.key
+							chunk.destroy()
+							delete @chunks[chunk.key]
+					], ->					
+
+				fn = _.debounce(fn,delay_cold_chunk)
+				chunk.on 'nosub', fn
+
+				cb()
 
 			chunk_db.findOne {_id:chunk.key}, (err,doc) =>
 				if err or doc == null
@@ -36,14 +50,13 @@ module.exports = (server,opts) ->
 							yy = y + (chunk.Y * CHUNK_SIZE)
 
 							chunk.set_block_type x, y, if yy > 13 or xx == 3 and yy < 5 then 1 else 0
-					chunk.on 'changed', fn
-					cb()
+					init(cb)					
 				else
+					console.log 'fetch from db', chunk.key
 					chunk.buffer = new Buffer(doc.raw)
-					chunk.on 'changed', fn
-					cb()
+					init(cb)					
 
-	class World
+	class World extends events.EventEmitter
 		constructor : ->
 			@map = new ServerMap()
 			@tickTargets = []
@@ -51,15 +64,24 @@ module.exports = (server,opts) ->
 			world = @
 			@interval = setInterval (=> @tick()), 1000 / config.framerate
 
+			fn = =>
+				if @avatars.length == 0
+					console.log 'shutting down world'
+					@destroy()
+
+			@on 'noplayer', _.debounce(fn,world_shutdown_delay)
+
 		createAvatar : (client,cb) ->
 			avatar = new Avatar(@,client)
 			@avatars.push avatar			
 			cb null, avatar
 
 		destroyAvatar : (avatar,cb) ->			
+			if avatar.active
+				@tickTargets.splice @tickTargets.indexOf avatar, 1
 			@avatars.splice @avatars.indexOf avatar, 1
 			if @avatars.length == 0
-				@destroy()
+				@emit 'noplayer'
 			cb()
 
 		touch : (e) ->
@@ -100,7 +122,7 @@ module.exports = (server,opts) ->
 
 	class Avatar extends Entity
 		constructor : (@world,@client) ->			
-			super @world.map, client.id, new Vector Math.floor(Math.random() * 10), Math.floor(Math.random() * 10)
+			super @world.map, client.id, new Vector Math.floor(Math.random() * 100), Math.floor(Math.random() * 10)
 
 			@age = 0
 			@id = client.id
@@ -115,7 +137,18 @@ module.exports = (server,opts) ->
 
 			@world.touch(@)
 
+		destroy : (cb) ->
+			@unsubAllChunks()
+
+			players.forEach (p) =>
+				return if p == @
+				p.send remove:id:@id
+
+			players.splice players.indexOf(@), 1
+			@world.destroyAvatar @, cb
+
 		sub_chunk : (key,cb) ->			
+			# console.log 'sub_chunk',key
 			return cb('already subed') if @chunks[key]
 
 			@chunks[key] = null
@@ -129,13 +162,17 @@ module.exports = (server,opts) ->
 
 			async.waterfall [
 				(cb) => @map.get_chunk X,Y,cb
-				(chunk,cb) => 				
-					@chunks[key] = => chunk.removeListener 'changed', fn
+				(chunk,cb) =>
+					@chunks[key] = => 
+						chunk.unsub()
+						chunk.removeListener 'changed', fn
+					chunk.sub()
 					chunk.on 'changed', fn
 					cb null,chunk.buffer.toJSON()
 			], cb
 
 		unsub_chunk : (key,cb) ->
+			# console.log 'unsub_chunk',key
 			if @chunks[key]
 				@chunks[key]()
 				delete @chunks[key]
@@ -149,6 +186,7 @@ module.exports = (server,opts) ->
 
 			@chunks = {}			
 
+		## ACTIONS
 		put : (dir,type,cb) ->
 			nx = Math.floor @pos.x + 0.5
 			ny = Math.floor @pos.y + 0.5
@@ -188,9 +226,7 @@ module.exports = (server,opts) ->
 
 		tick : ->
 			r = super 1
-
 			@age += 1
-
 			r
 
 		send : (json) -> @client.send world:json
@@ -198,43 +234,49 @@ module.exports = (server,opts) ->
 		see : (other) ->
 			@send update: id:other.id, pos:other.pos, vel:other.vel, age:other.age
 
-		update : (p,cb) ->			
-			# adjust client position if necessary
+		# client sends pos, vel periodically only if necessary
+		updateFromClient : (p,cb) ->			
+			# adjust client position
 			if p.vel?
-				if not @vel.equals p.vel										
+				# if velocity hasn't been changed, skip it!
+				if not @vel.equals p.vel
+					# is player jumping?
 					if p.vel.y < 0
-						@flying = true						
-						@vel.y = Math.min(@vel.y,p.vel.y)						
+						# mark we are flying
+						@flying = true
+						@vel.y = Math.min(@vel.y,p.vel.y)
+					# horizontal velocity :)
 					@vel.x = p.vel.x
+					# yes, we need to be ticked
 					@world.touch(@)
-			if p.pos?
+
+			# position update
+			if p.pos?				
 				claim = new Vector(p.pos)
-				error = claim.sub(@pos).size()				
+
+				# error
+				error = claim.sub(@pos).size()
 
 				# allowed_latent_ticks = latency / deltaTime (= 1000/framerate)
 				margin = @vel.size()
+
+				# HUGE heuristic : HACK
 				if @active
 					margin += 1
 				upper_bound = margin * config.allowed_latency * config.framerate / 1000
 
+				# we need to re-position player
 				if error > upper_bound
 					console.log 'adjust pos', @pos,p.pos,error, upper_bound
 					@send update: id:@id,pos:@pos,age:@age,flying:@flying
+
+				# if player's new suggestion is valid, use it
 				else unless @pos.equals claim
 					@world.touch(@)
 					@pos = claim
 
-			cb()
-
-		destroy : (cb) ->
-			@unsubAllChunks()
-
-			players.forEach (p) =>
-				return if p == @
-				p.send remove:id:@id
-
-			players.splice players.indexOf(@), 1
-			@world.destroyAvatar @, cb
+			# all synchronous
+			cb()		
 
 	rpc.world =
 		__check__ : rpc.auth.__check__
@@ -281,17 +323,18 @@ module.exports = (server,opts) ->
 		time : (client,time,cb) ->
 			cb null, Date.now()
 
-		sub_chunk : (client,key,cb) ->			
-			if client.avatar?
-				client.avatar.sub_chunk(key,cb)
-			else
-				cb('no avatar')
+		chunk : 
+			sub : (client,key,cb) ->			
+				if client.avatar?
+					client.avatar.sub_chunk(key,cb)
+				else
+					cb('no avatar')
 
-		unsub_chunk : (client,key,cb) ->
-			if client.avatar?
-				client.avatar.unsub_chunk(key,cb)
-			else
-				cb('no avatar')
+			unsub : (client,key,cb) ->
+				if client.avatar?
+					client.avatar.unsub_chunk(key,cb)
+				else
+					cb('no avatar')
 
 		actions :
 			__check__ : (client) -> client.avatar?
@@ -302,7 +345,7 @@ module.exports = (server,opts) ->
 				
 		update : (client,p,cb) ->
 			return cb('invalid state') unless client.avatar?
-			client.avatar.update(p,cb)
+			client.avatar.updateFromClient(p,cb)
 
 		leave : (client,cb) ->
 			client.destroyToken 'avatar:'+client.auth, cb

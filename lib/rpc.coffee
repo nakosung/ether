@@ -79,6 +79,6 @@ module.exports = (server) ->
 						console.log 'no permission', client.id, k
 						cb('no permission')
 				else
-					cb('invalid')					
+					cb('no such rpc:'+k)					
 					
 

@@ -35,7 +35,6 @@ class ClientMap extends Map
 			width : Math.floor @opts.width / TILE_SIZE
 			height : Math.floor @opts.height / TILE_SIZE
 
-		@receivedChunks = {}
 		@tiles = []			
 
 		@blocks = {}
@@ -51,14 +50,9 @@ class ClientMap extends Map
 
 		@visible_chunks = []
 
-	give_chunk : (chunk_key,buf) ->
-		@receivedChunks[chunk_key] = buf
-
 	generate : (chunk,cb) ->			
-		console.log 'generate chunk', chunk.key
-		buf = @receivedChunks[chunk.key]			
-		chunk.on 'remotely_changed', (event,args...) =>
-			console.log event
+		console.log 'generate chunk', chunk.key		
+		chunk.on 'remotely_changed', (event,args...) =>			
 			switch event
 				when 'block_type' then chunk.set_block_type args...
 				when 'block_meta' then chunk.set_block_meta args...
@@ -73,18 +67,18 @@ class ClientMap extends Map
 				console.log x,y,xx,yy,sx,sy,chunk.X,chunk.Y,@x,@y	
 				@tiles[sx][sy].setAnimation @blocks[type]
 
-		if buf				
+		chunk.on 'destroy', =>
+			rpc.world.chunk.unsub chunk.key, =>
+
+		rpc.world.chunk.sub chunk.key, (err,buf) =>
+			return cb(err) if err					
 			chunk.buffer = buf
 			cb()
-		else				
-			rpc.world.sub_chunk chunk.key, (err,buf) ->
-				return cb(err) if err					
-				chunk.buffer = buf
-				cb()
 
 	set_pos : (x,y) ->
 		return if @x == x and @y == y and not @needsRedraw
 		@needsRedraw = false
+		old_visible_chunks = @visible_chunks
 		@visible_chunks = []
 		@x = x
 		@y = y
@@ -99,6 +93,11 @@ class ClientMap extends Map
 							@visible_chunks.push chunk unless _.contains @visible_chunks		
 							type = chunk.get_block_type xx & CHUNK_SIZE_MASK, yy & CHUNK_SIZE_MASK								
 							@tiles[x][y].setAnimation @blocks[type]
+
+		discards = _.difference old_visible_chunks, @visible_chunks
+		discards.forEach (chunk) =>
+			chunk.destroy()
+			delete @chunks[chunk.key]
 
 	fit : (pos) ->			
 		x = Math.floor(pos.x / @view.width) * @view.width

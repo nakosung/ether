@@ -9,6 +9,15 @@ CHUNK_SIZE_MASK = CHUNK_SIZE - 1
 class Chunk extends events.EventEmitter
 	constructor : (@key,@X,@Y) ->		
 		@buffer = new Buffer( CHUNK_SIZE * CHUNK_SIZE * 1 )	
+		@numSubs = 0
+
+	sub : ->
+		@numSubs += 1
+
+	unsub : ->
+		@numSubs -= 1
+		if @numSubs == 0
+			@emit 'nosub'
 
 	set_block_type : (x,y,c) ->		
 		@buffer[x + (y << CHUNK_SIZE_BIT)] = c & 0xff		
@@ -31,6 +40,10 @@ class Chunk extends events.EventEmitter
 		else
 			@buffer[index] & 0xf
 
+	destroy : ->
+		@emit 'destroy'
+		@removeAllListeners()
+
 cut = (n) ->
 	int = Math.floor(n)
 	frac = n - int
@@ -49,7 +62,7 @@ class Map
 
 		@get_chunk X,Y,cb
 
-	get_chunk : (X,Y,cb = null) ->				
+	get_chunk : (X,Y,cb = null) ->
 		key = @chunk_key(X,Y)	
 		chunk = @chunks[key]
 
@@ -61,7 +74,7 @@ class Map
 					null
 			else
 				if cb?
-					cb null, chunk			
+					cb null, chunk
 				else
 					chunk
 		else if cb
@@ -92,7 +105,7 @@ class Map
 	get_block_type : (x,y) ->
 		subx = x & CHUNK_SIZE_MASK
 		suby = y & CHUNK_SIZE_MASK				
-		chunk = (@get_chunk_abs x,y)
+		chunk = @get_chunk_abs x,y
 		chunk?.get_block_type(subx,suby) 
 		
 	generate : (chunk,cb) ->

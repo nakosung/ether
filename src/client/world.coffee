@@ -46,10 +46,7 @@ app.directive 'playground', ->
 			B()
 			uninit()
 
-app.factory 'world', (rpc,autocol,$rootScope) ->	
-	
-
-
+app.factory 'world', (rpc,autocol,$rootScope,$location) ->	
 	class World
 		constructor : (@scope, @pg,@opts) ->
 			@entities = {}			
@@ -67,8 +64,11 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 					rpc.world.enter (err,server_settings) =>
 						@server_settings = server_settings
 						console.log 'enter returned', err, server_settings
+
+						# error occurred, we cannot enter into the world! *SAD*
 						if err
-							console.error(err)
+							# route to 'root'
+							$location.path '/'
 						else
 							@init()
 				else
@@ -92,11 +92,16 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 
 		updateEntity : (opt) ->			
 			#console.log 'updateEntity', opt
-			e = @entities[opt.id]						
-			e.age = opt.age
-			e.localAge = 0
-			e.pos.set opt.pos			
-			e
+			e = @entities[opt.id]
+			if e
+				e.age = opt.age
+				e.localAge = 0
+				e.pos.set opt.pos	
+				e.vel.set opt.vel		
+				e
+			else
+				console.log 'invalid', opt
+
 
 		deleteEntity : (opt) ->
 			#console.log 'deleteEntity', opt
@@ -133,9 +138,7 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 			@measureTimeDiffAndRoundtrip (err) =>
 				unless err
 					rpc.world.hello (err) =>
-						unless err
-							@map.set_pos 0,0			
-						else
+						if err
 							console.error('INIT FAILED')
 				else
 					console.error 'error!'
@@ -160,14 +163,12 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 			@createEntity(json.add) if json.add?
 			@updateEntity(json.update) if json.update?
 			@deleteEntity(json.remove) if json.remove?
-			if json.chunk?
-				@map.give_chunk json.chunk.key, json.chunk.buf
 			if json.chunk_changed?
 				data = json.chunk_changed
 				chunk = @map.chunks[data.key]
 				chunk?.emit 'remotely_changed', data.args...
 
-		tick : (deltaTick) ->			
+		processInput : ->
 			get_dir = =>
 				dir = new Vector 0,1
 				if @keypressed 'left'
@@ -177,6 +178,7 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 				else if @keypressed 'up'
 					dir = new Vector 0, -1
 				dir
+
 			if @avatar?
 				@map.fit @avatar.pos
 
@@ -200,24 +202,33 @@ app.factory 'world', (rpc,autocol,$rootScope) ->
 				if @keypressed 'K'
 					rpc.world.actions.put get_dir(), 2
 
+		tickEntities : (deltaTick)->
 			@currentTick ?= 0
 			@currentTick += deltaTick
 			intTick = Math.floor @currentTick
 									
 			for k,e of @entities
+				e.localAge += deltaTick
 				if e == @avatar and @lastTick != intTick
+					e.localAge = 0
 					@lastTick = intTick				
 					if e.tick 1						
 						rpc.world.update.unreliable pos:e.pos, vel:e.vel				
-				else
-					e.simulate e.localAge
-			
+				else					
+					e.simulate e.localAge		
+
+		tickStats : ->			
 			if @angular_spin-- < 0
 				@angular_spin = @opts.refreshRate / 4							
 				@scope.stats = 
 					x : @avatar?.pos.x
 					y : @avatar?.pos.y
 				@scope.$apply()
+
+		tick : (deltaTick) ->			
+			@processInput()
+			@tickEntities(deltaTick)
+			@tickStats()
 
 			false
 
