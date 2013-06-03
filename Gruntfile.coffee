@@ -77,7 +77,7 @@ module.exports = (grunt) ->
 	grunt.registerTask 'shared', ['coffee:shared','shell:browserify']
 	grunt.registerTask 'test', ['mochaTest']
 	grunt.registerTask 'server', ['coffee:server']
-	grunt.registerTask 'default', ['shell:run','watch']
+	grunt.registerTask 'default', ['make','shell:run','watch']
 	grunt.registerTask 'make', ['shared','server','client']
 
 	# watching server folder

@@ -11,6 +11,7 @@ walk = (p1,p2,is_solid) =>
 	d = p2.sub(p1).size()
 	if d > 1
 		m = p1.add(p2).mul(0.5)
+		#console.log p1, m, p2
 		return walk(p1,m,is_solid) or walk(m,p2,is_solid)
 
 	a0 = p1.floor()
@@ -27,16 +28,31 @@ walk = (p1,p2,is_solid) =>
 	unless is_solid(b0) or is_solid(b1)
 		return undefined
 
-	console.log 'should solve it'
-	console.log a0,a1,b0,b1,p1,p2
+	if p1.x != p2.x
+		console.log 'should solve it'
+		console.log p1,p2,a0,a1,b0,b1
 	
 	V = new Vector p2
+	# a1-a0 = [0,col]
+	# b1-b0 = [0,col]
 	if p1.x != p2.x
 		V.x = a0.x
 	if p1.y != p2.y
 		V.y = a0.y
+	unless is_solid(b0)
+		if a0.x != b0.x
+			if p1.x < p2.x
+				V.x += 1
+			else if p1.x > p2.x
+				V.x -= 1
+		if a0.y != b0.y
+			if p1.y < p2.y
+				V.y += 1
+			else if p1.y > p2.y
+				V.y -= 1
 
-	console.log V
+
+	#console.log V
 	V
 
 module.exports.sweep = walk

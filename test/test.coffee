@@ -45,14 +45,26 @@ describe 'physics', ->
 		test = (s,e) ->
 			physics.sweep s, e, is_solid
 
-		# it 'should cut', ->
-		# 	(test new Vector(1.5,2), new Vector(0,2)).x.should.equal 1
+		it 'should cut', ->
+			(test new Vector(1.5,2), new Vector(0,2)).x.should.equal 1
 
-		# it 'should not alter unnecessary dim elem', ->
-		# 	(test new Vector(2,2), new Vector(sizex+1,2)).y.should.equal 2
+		it 'should not alter unnecessary dim elem', ->
+			(test new Vector(2,2), new Vector(sizex+1,2)).y.should.equal 2
 
 		it 'should collide right wall', ->
 			(test new Vector(2,2), new Vector(sizex+1,2)).x.should.equal sizex-2
+
+		it 'should collide left wall', ->
+			(test new Vector(2,2), new Vector(0,2)).x.should.equal 1
+
+		it 'should collide bottom wall', ->
+			(test new Vector(2,2), new Vector(2,sizey+1)).y.should.equal sizey-2
+
+		it 'should collide top wall', ->
+			(test new Vector(2,2), new Vector(2,0)).y.should.equal 1
+
+		it 'should collide corner', ->
+			(test new Vector(2,2), new Vector(0,0)).should.eql new Vector(1,1)
 
 
 
