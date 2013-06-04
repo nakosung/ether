@@ -11,10 +11,12 @@ class Chunk extends events.EventEmitter
 		@buffer = new Buffer( CHUNK_SIZE * CHUNK_SIZE * 1 )	
 		@numSubs = 0
 
-	sub : ->
+	sub : (fn) ->
+		@on 'changed', fn
 		@numSubs += 1
 
-	unsub : ->
+	unsub : (fn) ->
+		@removeListener 'changed', fn
 		@numSubs -= 1
 		if @numSubs == 0
 			@emit 'nosub'

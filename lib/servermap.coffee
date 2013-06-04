@@ -19,11 +19,8 @@ class ChunkView
 		async.waterfall [
 			(cb) => @map.get_chunk X,Y,cb
 			(chunk,cb) =>
-				@chunks[key] = => 
-					chunk.unsub()
-					chunk.removeListener 'changed', fn
-				chunk.sub()
-				chunk.on 'changed', fn
+				@chunks[key] = => chunk.unsub fn					
+				chunk.sub fn				
 				cb null,chunk.buffer.toJSON()
 		], cb
 
@@ -51,7 +48,7 @@ class ServerMap extends Map
 
 	createView : (delta) ->		
 		new ChunkView(@,delta)
-		
+
 	generate : (chunk,cb) ->
 		init = (cb) =>
 			## AUTO CHECK-IN
