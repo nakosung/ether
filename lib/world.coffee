@@ -1,7 +1,8 @@
 async = require 'async'
 {Vector} = require './shared/vector'
 {Entity} = require './shared/entity'
-{Map,CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
+{CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
+{ServerMap} = require './servermap'
 events = require 'events'
 _ = require 'underscore'
 
@@ -21,44 +22,26 @@ module.exports = (server,opts) ->
 
 	config = 
 		allowed_latency : 1000
-		framerate : 20
-
-	class ServerMap extends Map
-		generate : (chunk,cb) ->
-			init = (cb) =>
-				## AUTO CHECK-IN
-				fn = =>					
-					async.series [
-						(cb) => chunk_db.save {_id:chunk.key,raw:chunk.buffer.toString()}, cb
-						(cb) => if chunk.numSubs == 0
-							console.log 'drop off chunk', chunk.key
-							chunk.destroy()
-							delete @chunks[chunk.key]
-					], ->					
-
-				fn = _.debounce(fn,delay_cold_chunk)
-				chunk.on 'nosub', fn
-
-				cb()
-
-			chunk_db.findOne {_id:chunk.key}, (err,doc) =>
-				if err or doc == null
-					for y in [0..(CHUNK_SIZE-1)]
-						for x in [0..(CHUNK_SIZE-1)]
-
-							xx = x + (chunk.X * CHUNK_SIZE)
-							yy = y + (chunk.Y * CHUNK_SIZE)
-
-							chunk.set_block_type x, y, if yy > 13 or xx == 3 and yy < 5 then 1 else 0
-					init(cb)					
-				else
-					console.log 'fetch from db', chunk.key
-					chunk.buffer = new Buffer(doc.raw)
-					init(cb)					
+		framerate : 20					
 
 	class World extends events.EventEmitter
 		constructor : ->
-			@map = new ServerMap()
+			db = 
+				delay_cold_chunk : delay_cold_chunk
+				save : (chunk,cb) ->
+					chunk_db.save {_id:chunk.key,raw:chunk.buffer.toString()}, cb
+				load : (chunk,cb) ->
+					chunk_db.findOne {_id:chunk.key}, (err,doc) =>
+						if err
+							cb(err)
+						else if doc							
+							#console.log 'fetch from db', chunk.key
+							chunk.buffer = new Buffer(doc.raw)
+							cb(null,chunk)
+						else
+							cb('new')
+				
+			@map = new ServerMap db
 			@tickTargets = []
 			@avatars = []
 			world = @
@@ -105,7 +88,7 @@ module.exports = (server,opts) ->
 						if other != a
 							a.see other
 			catch e 
-				console.log e.error
+				console.log "WORLD",e.error
 				
 
 		destroy : ->
@@ -118,7 +101,8 @@ module.exports = (server,opts) ->
 			
 		cb(null,world)
 
-	players = []
+	players = []	
+
 
 	class Avatar extends Entity
 		constructor : (@world,@client) ->			
@@ -132,13 +116,17 @@ module.exports = (server,opts) ->
 				p.send add: id:@id, pos:@pos, age:@age
 
 			players.push(@)
-			@send spawn:id:@id,pos:@pos
-			@chunks = {}
+			@send spawn:id:@id,pos:@pos			
 
 			@world.touch(@)
 
+			@chunk_view = @world.map.createView (key,args) => 
+				@send chunk_changed:
+					key:key					
+					args:args
+
 		destroy : (cb) ->
-			@unsubAllChunks()
+			@chunk_view.destroy()
 
 			players.forEach (p) =>
 				return if p == @
@@ -146,46 +134,7 @@ module.exports = (server,opts) ->
 
 			players.splice players.indexOf(@), 1
 			@world.destroyAvatar @, cb
-
-		sub_chunk : (key,cb) ->			
-			# console.log 'sub_chunk',key
-			return cb('already subed') if @chunks[key]
-
-			@chunks[key] = null
-
-			fn = (args...) =>
-				@send chunk_changed:
-					key:key					
-					args:args
-
-			[X,Y] = @map.parse_key key
-
-			async.waterfall [
-				(cb) => @map.get_chunk X,Y,cb
-				(chunk,cb) =>
-					@chunks[key] = => 
-						chunk.unsub()
-						chunk.removeListener 'changed', fn
-					chunk.sub()
-					chunk.on 'changed', fn
-					cb null,chunk.buffer.toJSON()
-			], cb
-
-		unsub_chunk : (key,cb) ->
-			# console.log 'unsub_chunk',key
-			if @chunks[key]
-				@chunks[key]()
-				delete @chunks[key]
-				cb()
-			else
-				cb('not subed')
-
-		unsubAllChunks : ->
-			for k,v of @chunks
-				v?()
-
-			@chunks = {}			
-
+		
 		## ACTIONS
 		put : (dir,type,cb) ->
 			nx = Math.floor @pos.x + 0.5
@@ -325,14 +274,14 @@ module.exports = (server,opts) ->
 
 		chunk : 
 			sub : (client,key,cb) ->			
-				if client.avatar?
-					client.avatar.sub_chunk(key,cb)
+				if client.avatar?.chunk_view?
+					client.avatar.chunk_view.sub(key,cb)
 				else
 					cb('no avatar')
 
 			unsub : (client,key,cb) ->
-				if client.avatar?
-					client.avatar.unsub_chunk(key,cb)
+				if client.avatar?.chunk_view?
+					client.avatar.chunk_view.unsub(key,cb)
 				else
 					cb('no avatar')
 
