@@ -2,55 +2,56 @@ async = require 'async'
 _ = require 'underscore'
 {Map,CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
 
+class ChunkView
+	constructor : (@map,@delta) ->
+		@chunks = {}
+
+	sub : (key,cb) ->			
+		# console.log 'sub_chunk',key
+		return cb('already subed') if @chunks[key]
+
+		@chunks[key] = null
+
+		fn = (args...) => @delta key, args				
+
+		[X,Y] = @map.parse_key key
+
+		async.waterfall [
+			(cb) => @map.get_chunk X,Y,cb
+			(chunk,cb) =>
+				@chunks[key] = => 
+					chunk.unsub()
+					chunk.removeListener 'changed', fn
+				chunk.sub()
+				chunk.on 'changed', fn
+				cb null,chunk.buffer.toJSON()
+		], cb
+
+	unsub : (key,cb) ->
+		# console.log 'unsub_chunk',key
+		if @chunks[key]
+			@chunks[key]()
+			delete @chunks[key]
+			cb()
+		else
+			cb('not subed')
+
+	unsubAll : ->
+		for k,v of @chunks
+			v?()
+
+		@chunks = {}			
+
+	destroy : ->
+		@unsubAll()
+
 class ServerMap extends Map
 	constructor : (@opts) ->
 		super
 
-	createView : (delta) ->
-		map = @
-		class ChunkView
-			constructor : (@delta) ->
-				@chunks = {}
-
-			sub : (key,cb) ->			
-				# console.log 'sub_chunk',key
-				return cb('already subed') if @chunks[key]
-
-				@chunks[key] = null
-
-				fn = (args...) => @delta key, args				
-
-				[X,Y] = map.parse_key key
-
-				async.waterfall [
-					(cb) => map.get_chunk X,Y,cb
-					(chunk,cb) =>
-						@chunks[key] = => 
-							chunk.unsub()
-							chunk.removeListener 'changed', fn
-						chunk.sub()
-						chunk.on 'changed', fn
-						cb null,chunk.buffer.toJSON()
-				], cb
-
-			unsub : (key,cb) ->
-				# console.log 'unsub_chunk',key
-				if @chunks[key]
-					@chunks[key]()
-					delete @chunks[key]
-					cb()
-				else
-					cb('not subed')
-
-			unsubAll : ->
-				for k,v of @chunks
-					v?()
-
-				@chunks = {}			
-
-			destroy : ->
-				@unsubAll()
-		new ChunkView(delta)
+	createView : (delta) ->		
+		new ChunkView(@,delta)
+		
 	generate : (chunk,cb) ->
 		init = (cb) =>
 			## AUTO CHECK-IN

@@ -18,32 +18,36 @@ module.exports = (server,opts) ->
 
 	world = null	
 
-	chunk_db = db.collection 'chunk'
+	chunk_mongodb = ->
+		chunk_db = db.collection 'chunk'
+
+		save : (chunk,cb) ->
+			chunk_db.save {_id:chunk.key,raw:chunk.buffer.toString()}, cb
+
+		load : (chunk,cb) ->
+			chunk_db.findOne {_id:chunk.key}, (err,doc) =>
+				if err
+					cb(err)
+				else if doc							
+					#console.log 'fetch from db', chunk.key
+					chunk.buffer = new Buffer(doc.raw)
+					cb(null,chunk)
+				else
+					cb('new')
 
 	config = 
 		allowed_latency : 1000
-		framerate : 20					
+		framerate : 20
 
 	class World extends events.EventEmitter
 		constructor : ->
-			db = 
-				delay_cold_chunk : delay_cold_chunk
-				save : (chunk,cb) ->
-					chunk_db.save {_id:chunk.key,raw:chunk.buffer.toString()}, cb
-				load : (chunk,cb) ->
-					chunk_db.findOne {_id:chunk.key}, (err,doc) =>
-						if err
-							cb(err)
-						else if doc							
-							#console.log 'fetch from db', chunk.key
-							chunk.buffer = new Buffer(doc.raw)
-							cb(null,chunk)
-						else
-							cb('new')
+			opts = delay_cold_chunk : delay_cold_chunk			
+			_.extend opts, chunk_mongodb()
 				
-			@map = new ServerMap db
+			@map = new ServerMap opts
 			@tickTargets = []
 			@avatars = []
+			@players = []	
 			world = @
 			@interval = setInterval (=> @tick()), 1000 / config.framerate
 
@@ -56,7 +60,8 @@ module.exports = (server,opts) ->
 
 		createAvatar : (client,cb) ->
 			avatar = new Avatar(@,client)
-			@avatars.push avatar			
+			@avatars.push avatar
+			avatar.init()
 			cb null, avatar
 
 		destroyAvatar : (avatar,cb) ->			
@@ -99,9 +104,7 @@ module.exports = (server,opts) ->
 		unless world
 			world = new World()
 			
-		cb(null,world)
-
-	players = []	
+		cb(null,world)	
 
 
 	class Avatar extends Entity
@@ -111,28 +114,28 @@ module.exports = (server,opts) ->
 			@age = 0
 			@id = client.id
 
-			players.forEach (p) =>
-				@send add: id:p.id, pos:p.pos, age:p.age
-				p.send add: id:@id, pos:@pos, age:@age
-
-			players.push(@)
-			@send spawn:id:@id,pos:@pos			
-
-			@world.touch(@)
-
 			@chunk_view = @world.map.createView (key,args) => 
 				@send chunk_changed:
 					key:key					
 					args:args
 
+		init : ->
+			@world.players.forEach (p) =>
+				@send add: id:p.id, pos:p.pos, age:p.age
+				p.send add: id:@id, pos:@pos, age:@age
+
+			@world.players.push(@)
+			@send spawn:id:@id,pos:@pos			
+			@world.touch(@)			
+
 		destroy : (cb) ->
 			@chunk_view.destroy()
 
-			players.forEach (p) =>
+			@world.players.forEach (p) =>
 				return if p == @
 				p.send remove:id:@id
 
-			players.splice players.indexOf(@), 1
+			@world.players.splice @world.players.indexOf(@), 1
 			@world.destroyAvatar @, cb
 		
 		## ACTIONS
@@ -152,6 +155,7 @@ module.exports = (server,opts) ->
 				], cb
 			else
 				cb('invalid')
+
 		dig : (dir,cb) ->
 			nx = Math.floor @pos.x + 0.5
 			ny = Math.floor @pos.y + 0.5
@@ -183,46 +187,52 @@ module.exports = (server,opts) ->
 		see : (other) ->
 			@send update: id:other.id, pos:other.pos, vel:other.vel, age:other.age
 
+		# pos : Object{x,y}
+		updateClientPos : (pos) ->
+			claim = new Vector(pos)
+
+			# error
+			error = claim.sub(@pos).size()
+
+			# allowed_latent_ticks = latency / deltaTime (= 1000/framerate)
+			margin = @vel.size()
+
+			# HUGE heuristic : HACK
+			if @active
+				margin += 1
+			upper_bound = margin * config.allowed_latency * config.framerate / 1000
+
+			# we need to re-position player
+			if error > upper_bound
+				console.log 'adjust pos', @pos,pos,error, upper_bound
+				@send update: id:@id,pos:@pos,age:@age,flying:@flying
+
+			# if player's new suggestion is valid, use it
+			else unless @pos.equals claim
+				@world.touch(@)
+				@pos = claim
+
+		# vel : Object{x,y}
+		updateClientVel : (vel) ->
+			# if velocity hasn't been changed, skip it!
+			if not @vel.equals vel
+				# is player jumping?
+				if vel.y < 0
+					# mark we are flying
+					@flying = true
+					@vel.y = Math.min(@vel.y,vel.y)
+				# horizontal velocity :)
+				@vel.x = vel.x
+				# yes, we need to be ticked
+				@world.touch(@)
+
 		# client sends pos, vel periodically only if necessary
-		updateFromClient : (p,cb) ->			
+		updateClientData : (p,cb) ->			
 			# adjust client position
-			if p.vel?
-				# if velocity hasn't been changed, skip it!
-				if not @vel.equals p.vel
-					# is player jumping?
-					if p.vel.y < 0
-						# mark we are flying
-						@flying = true
-						@vel.y = Math.min(@vel.y,p.vel.y)
-					# horizontal velocity :)
-					@vel.x = p.vel.x
-					# yes, we need to be ticked
-					@world.touch(@)
+			@updateClientVel(p.vel) if p.vel?				
 
 			# position update
-			if p.pos?				
-				claim = new Vector(p.pos)
-
-				# error
-				error = claim.sub(@pos).size()
-
-				# allowed_latent_ticks = latency / deltaTime (= 1000/framerate)
-				margin = @vel.size()
-
-				# HUGE heuristic : HACK
-				if @active
-					margin += 1
-				upper_bound = margin * config.allowed_latency * config.framerate / 1000
-
-				# we need to re-position player
-				if error > upper_bound
-					console.log 'adjust pos', @pos,p.pos,error, upper_bound
-					@send update: id:@id,pos:@pos,age:@age,flying:@flying
-
-				# if player's new suggestion is valid, use it
-				else unless @pos.equals claim
-					@world.touch(@)
-					@pos = claim
+			@updateClientPos(p.pos) if p.pos?								
 
 			# all synchronous
 			cb()		
@@ -294,7 +304,7 @@ module.exports = (server,opts) ->
 				
 		update : (client,p,cb) ->
 			return cb('invalid state') unless client.avatar?
-			client.avatar.updateFromClient(p,cb)
+			client.avatar.updateClientData(p,cb)
 
 		leave : (client,cb) ->
 			client.destroyToken 'avatar:'+client.auth, cb

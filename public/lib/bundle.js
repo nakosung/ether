@@ -737,7 +737,7 @@ app.controller('WorldCtrl', function($scope, rpc, world) {
 /*
 //@ sourceMappingURL=world.js.map
 */
-},{"./ether":4,"../shared/vector":5,"./logic":6,"underscore":7}],7:[function(require,module,exports){
+},{"./ether":4,"./logic":6,"../shared/vector":5,"underscore":7}],7:[function(require,module,exports){
 (function(){//     Underscore.js 1.4.4
 //     http://underscorejs.org
 //     (c) 2009-2013 Jeremy Ashkenas, DocumentCloud Inc.
@@ -2575,7 +2575,7 @@ module.exports.ClientMap = ClientMap;
 /*
 //@ sourceMappingURL=logic.js.map
 */
-},{"../shared/map":8,"../shared/entity":9,"../shared/vector":5}],10:[function(require,module,exports){
+},{"../shared/entity":8,"../shared/vector":5,"../shared/map":9}],10:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -3132,7 +3132,7 @@ assert.doesNotThrow = function(block, /*optional*/error, /*optional*/message) {
 assert.ifError = function(err) { if (err) {throw err;}};
 
 })()
-},{"util":13,"buffer":14}],9:[function(require,module,exports){
+},{"util":13,"buffer":14}],8:[function(require,module,exports){
 var CHUNK_SIZE_MASK, Entity, Map, TERMINAL_VELOCITY, Vector, gravity, physics, _ref;
 
 Vector = require('./vector').Vector;
@@ -3238,7 +3238,7 @@ module.exports.Entity = Entity;
 /*
 //@ sourceMappingURL=entity.js.map
 */
-},{"./vector":5,"./physics":15,"./map":8}],13:[function(require,module,exports){
+},{"./vector":5,"./map":9,"./physics":15}],13:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -5185,7 +5185,7 @@ module.exports.walk = walk;
 /*
 //@ sourceMappingURL=physics.js.map
 */
-},{"./vector":5}],8:[function(require,module,exports){
+},{"./vector":5}],9:[function(require,module,exports){
 (function(){var Buffer, CHUNK_SIZE, CHUNK_SIZE_BIT, CHUNK_SIZE_MASK, Chunk, Map, cut, events, _,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
