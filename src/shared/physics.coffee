@@ -7,62 +7,6 @@ col_eps = col.sub new Vector(0.00001)
 
 dim_range = [0..(Vector.dim-1)]
 
-sweep = (p1,p2,is_solid) =>
-	d = p2.sub(p1).size()
-	if d > 1
-		m = p1.add(p2).mul(0.5)
-		#console.log p1, m, p2
-		return sweep(p1,m,is_solid) or sweep(m,p2,is_solid)
-
-	a0 = p1.floor()
-	a1 = p1.add(col_eps).floor()
-
-	b0 = p2.floor()
-	b1 = p2.add(col_eps).floor()
-
-	# start invalid
-	if is_solid(a0) or is_solid(a1)
-		return p1
-
-	# safe end
-	unless is_solid(b0) or is_solid(b1)
-		return undefined
-
-	# if p1.x != p2.x
-	# 	console.log 'should solve it'
-	# 	console.log p1,p2,a0,a1,b0,b1,is_solid(b0),is_solid(b1)
-
-	V = new Vector p2
-	# a1-a0 = [0,col]
-	# b1-b0 = [0,col]
-	if a0.x != b0.x
-		V.x = a0.x
-	if a0.y != b0.y
-		V.y = a0.y	
-	unless is_solid(b0)
-		if is_solid(b1) 
-			if a0.equals b0			
-				if a1.x != b1.x
-					V.x = a0.x
-				if a1.y != b1.y
-					V.y = a0.y
-			else
-				V = new Vector a0
-		else			
-			if a0.x != b0.x
-				if p1.x < p2.x
-					V.x += 1
-				else if p1.x > p2.x
-					V.x -= 1
-			if a0.y != b0.y
-				if p1.y < p2.y
-					V.y += 1
-				else if p1.y > p2.y
-					V.y -= 1
-
-	#console.log V
-	V
-
 walk = (pos,delta,is_solid) ->
 	s = delta.size()
 	return [pos,delta] unless s
@@ -107,7 +51,7 @@ walk = (pos,delta,is_solid) ->
 	horz = null
 	vert = null
 
-	#console.log 'hello'
+	# console.log 'hello'
 
 	if delta.x		
 		horz = sweep(pos,delta,new Vector(1,0))		
@@ -137,7 +81,4 @@ walk = (pos,delta,is_solid) ->
 
 	[pos.add(delta), new Vector()]	
 
-
-
-module.exports.sweep = sweep
 module.exports.walk = walk
