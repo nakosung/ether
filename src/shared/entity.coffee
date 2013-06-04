@@ -16,9 +16,10 @@ class Entity
 
 	is_on_solid : ->
 		i = @pos.floor()
-		if i.y != p.y
+		if i.y != @pos.y
 			false
 		else 
+			i.y += 1
 			is_solid = (p) => @map.get_block_type(p.x,p.y) != 0
 
 			if is_solid(i) 

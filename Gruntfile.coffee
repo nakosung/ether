@@ -80,7 +80,7 @@ module.exports = (grunt) ->
 	grunt.loadNpmTasks 'grunt-shell-spawn'
 		
 	grunt.registerTask 'client', ['coffee:client','shell:browserify']	
-	grunt.registerTask 'shared', ['coffee:shared','shell:browserify']
+	grunt.registerTask 'shared', ['coffee:shared','client']
 	grunt.registerTask 'test', ['shell:test']
 	grunt.registerTask 'server', ['coffee:server']
 	grunt.registerTask 'default', ['make','shell:run','watch']

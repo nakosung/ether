@@ -25,10 +25,34 @@ app.controller 'NavCtrl', ($scope,$location,rpc) ->
 
 	$scope.$on 'rpc:update', ->		
 		$scope.navbar = _.filter menu, (m) -> m.checker()
-	
+
+
 app.controller 'MainCtrl', ($scope,collection,rpc,autologin,autocol,subscribe,$location) ->	
 	autocol $scope, 'myroom test me sync:stat users_online stats mm rooms mm:stats'	
 	$scope.rpc = rpc	
 
 	window.rpc = rpc
 	window.col = collection.all		
+
+app.controller 'ErrorDialogController', ($scope,dialog,args,result) ->
+	$scope.close = -> dialog.close()	
+	$scope.title = if result[0] then "Error" else "Success"
+	$scope.args = args
+	$scope.result = result
+
+
+app.controller 'ModalCtrl', ($scope,$dialog) ->	
+	last = null
+	$scope.$on 'rpc:result', (e,json) ->		
+		[args,result] = json		
+		if last?.isOpen
+			last.close()
+		d = last = $dialog.dialog {
+			backdrop:true
+			keyboard:true
+			backdropClick:true			
+			resolve:
+				result: -> angular.copy result
+				args: -> angular.copy args
+		}			
+		d.open 'template/error.html', 'ErrorDialogController'

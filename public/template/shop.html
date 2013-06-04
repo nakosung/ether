@@ -15,7 +15,7 @@
 		<ul>
 			<li ng-repeat="sku in sku">
 				{{sku.name}} {{shop.price}} 
-				<button class="btn" ng-click="rpc.shop.buy(sku._id)">Buy</button> 
+				<button class="btn" ng-click="rpc.shop.buy.checked(sku._id)">Buy</button> 
 				<button class="btn btn-warning" ng-show="rpc.shop.keeper" ng-click="edit(sku)">Edit</button>
 			</li>
 		</ul>

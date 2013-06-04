@@ -147,6 +147,9 @@ ether.factory 'rpc', (sockjs,$rootScope,collection) ->
 						t = rpc:{}						
 						t.rpc[method] = [-1,args...]						
 						sockjs.send t
+					G.checked = (args...) ->						
+						G.call @, args..., (result...) ->							
+							$rootScope.$broadcast 'rpc:result', [args, result]
 
 					fn = instance[method] = G
 					o = method.split(':')
