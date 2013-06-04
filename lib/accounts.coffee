@@ -4,8 +4,8 @@ async = require 'async'
 HEARTBEAT_TTL = 1000 * 30 # 30 sec
 
 module.exports = (server) ->
-	server.use './rpc'
-	server.use './mongodb'
+	server.use 'rpc'
+	server.use 'mongodb'
 	server.use 'deps'
 	server.use 'token'
 

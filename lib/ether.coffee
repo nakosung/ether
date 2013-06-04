@@ -26,22 +26,26 @@ class Client extends events.EventEmitter
 	publish : (channel,message) -> @send pub:[channel,message]
 
 class Server extends events.EventEmitter
-	constructor : (@ClientClass = Client) ->		
-		@nextClientId = 0
-		@dir = '.'
+	constructor : (opts) ->		
+		@id = opts.id
+		@ClientClass = opts.ClientClass or Client
+		@dir = opts.dir or '.'
+		@nextClientId = 0		
 		@clients = []		
 		@inits = []
+
+		@plugins = []
 		
 		@all = 
 			sendraw : (raw) => client.sendraw raw for client in @clients
 			send : (data) => client.send data for client in @clients
 	
-	use : (plugin,opt) ->
-		if _.isString plugin			
+	use : (plugin,opt) ->	
+		if _.isString plugin
 			@use (require @dir + '/' + plugin), opt
-		else
-			unless plugin.init?
-				plugin.init = true				
+		else		
+			unless _.contains @plugins, plugin				
+				@plugins.push plugin
 				r = plugin.call(@,@,opt)
 				@inits.push r.init if _.isFunction(r?.init)
 
@@ -52,8 +56,7 @@ class Server extends events.EventEmitter
 		@cleanups ?= []
 		@cleanups.push(fn)
 
-	exit : (cb) ->
-		console.log 'exit!'
+	exit : (cb) ->		
 		if @cleanups?
 			async.parallel @cleanups, cb				
 		else
@@ -61,8 +64,7 @@ class Server extends events.EventEmitter
 		
 module.exports = (plugins,opts) ->
 	main = (plugins,opts) ->		
-		server = new Server		
-		server.id = opts.id
+		server = new Server	opts
 		plugins.map (x) -> server.use x, opts?[x]
 
 		# process.on 'SIGUSR2', ->
@@ -83,6 +85,6 @@ module.exports = (plugins,opts) ->
 			_.extend opts, id:cluster.worker.id
 			main plugins, opts
 	else
-		_.extend opts, id:'standalone'
+		opts.id ?= 'standalone'
 		main plugins, opts
 

@@ -14,6 +14,19 @@ class Entity
 	is_flying : ->
 		@flying
 
+	is_on_solid : ->
+		i = @pos.floor()
+		if i.y != p.y
+			false
+		else 
+			is_solid = (p) => @map.get_block_type(p.x,p.y) != 0
+
+			if is_solid(i) 
+				true
+			else
+				i.x += 1
+				is_solid(i)				
+
 	tick : (deltaTick) ->				
 		dirty = false		
 
@@ -57,7 +70,7 @@ class Entity
 		dirty or @flying or @vel.size()
 
 	jump : (power) ->		
-		unless @is_flying()			
+		if not @is_flying() and @is_on_solid()
 			@flying = true
 			@vel.y = -power
 

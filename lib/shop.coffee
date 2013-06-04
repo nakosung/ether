@@ -7,6 +7,7 @@ INITIAL_MONEY = 10000
 module.exports = (server) ->
 	server.use 'rpc'
 	server.use 'deps'	
+	server.use 'accounts'
 
 	{db,deps,rpc} = server
 

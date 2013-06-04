@@ -78,5 +78,5 @@ module.exports = (server) ->
 
 			write @written, String(dep), String(extra or '*')
 
-	server.deps = new Deps()
+	server.deps = new Deps()	
 	server.bridge? 'dep:update'

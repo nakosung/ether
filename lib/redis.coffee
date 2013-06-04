@@ -17,7 +17,7 @@ module.exports = (server) ->
 			s channel, JSON.parse(message)
 
 	server.pub = (channel,message) ->
-		@redis.pub.publish channel, JSON.stringify(message)
+		@redis.pub.publish channel, JSON.stringify(message)		
 
 	server.sub = (channel,fn) ->
 		unless subs[channel]?

@@ -39,6 +39,10 @@ class Exclusive
 		@haves = {}
 
 		@sub.on 'message', (channel,message) =>
+			# if require('cluster').isMaster
+			# 	console.log 'MASTER', channel, message
+			# else
+			# 	console.log 'SLAVE', channel, message
 			return unless /^token:/.test(channel)
 
 			switch channel
@@ -52,12 +56,13 @@ class Exclusive
 							@pub.publish 'token:back', JSON.stringify([id,caller,err,args...])
 						
 				when 'token:back'
-					[id,caller,args...] = JSON.parse(message)
+					[id,caller,args...] = JSON.parse(message)					
 					if id == @id 
-						fn = @pending[caller]
-						if fn
+						pending = @pending[caller]						
+						if pending?.cb
+							clearTimeout(pending.timeout)
 							delete @pending[caller]	
-							fn(args...)
+							pending.cb(args...)
 
 		#process.on 'exit', =>
 			#console.log "EXITEXITEXITEXITEXIT".red.bold
@@ -76,9 +81,9 @@ class Exclusive
 
 		#console.log 'take'.bold, 'begin', token, args
 
-		repeat = =>		
+		repeat = =>
 			async.waterfall [
-				(cb) =>
+				(cb) =>					
 					# is it local?
 					if @haves[token]?
 						#console.log 'i have the token', args
@@ -96,15 +101,16 @@ class Exclusive
 									cb()
 								else
 									# ask owner
-									caller = @nextId++
-									@pending[caller] = cb
-									@pub.publish 'token:call', JSON.stringify([token,@id,caller,args...])
+									caller = @nextId++									
 
-									# owner may be down or past away.
-									setTimeout (=> 
+									# owner may be down or past away.									'
+									timeout = setTimeout (=> 
 										@pub.publish 'token:call', JSON.stringify([token,@id,caller,"TIMEOUT"])
 										cb()
 									), TIMEOUT
+
+									@pending[caller] = timeout:timeout,cb:cb
+									@pub.publish 'token:call', JSON.stringify([token,@id,caller,args...])
 						], (err,result) =>
 							if err
 								delete @haves[token]
@@ -121,6 +127,7 @@ class Exclusive
 						delete @haves[token]
 						@pub.del key, cb
 			], (err) =>				
+				#console.log err
 				if err == 'BUSY'					
 					setTimeout (=> repeat()), 200
 				else

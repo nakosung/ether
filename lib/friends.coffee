@@ -53,6 +53,7 @@ module.exports = (server) ->
 	rpc.rsvp =
 		__check__ : (client) -> rpc.auth.__check__(client)
 
+		# issue a rsvp to invite as a friend
 		issue : (client,other,what,cb) ->
 			@assert_fn cb
 			main = (other,cb) ->
