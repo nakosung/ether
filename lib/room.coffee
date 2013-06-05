@@ -17,8 +17,8 @@ module.exports = (server) ->
 
 	col = db.collection pluralize GROUP_NAME
 
-	server.publishDocs (pluralize GROUP_NAME), (client,cb) -> col.findAll {private:null},cb
-	server.publishDoc 'my' + GROUP_NAME, (client,cb) ->						
+	server.publishDocs (pluralize GROUP_NAME), (client,old,cb) -> col.findAll {private:null},cb
+	server.publishDoc 'my' + GROUP_NAME, (client,old,cb) ->						
 		deps.read client
 		if client[CLIENT_CACHE]
 			col.findOne {_id:client[CLIENT_CACHE]}, cb

@@ -8,18 +8,7 @@ CHUNK_SIZE_MASK = CHUNK_SIZE - 1
 
 class Chunk extends events.EventEmitter
 	constructor : (@key,@X,@Y) ->		
-		@buffer = new Buffer( CHUNK_SIZE * CHUNK_SIZE * 1 )	
-		@numSubs = 0
-
-	sub : (fn) ->
-		@on 'changed', fn
-		@numSubs += 1
-
-	unsub : (fn) ->
-		@removeListener 'changed', fn
-		@numSubs -= 1
-		if @numSubs == 0
-			@emit 'nosub'
+		@buffer = new Buffer( CHUNK_SIZE * CHUNK_SIZE * 1 )			
 
 	set_block_type : (x,y,c) ->		
 		@buffer[x + (y << CHUNK_SIZE_BIT)] = c & 0xff		
@@ -35,6 +24,7 @@ class Chunk extends events.EventEmitter
 		else
 			@buffer[index] = @buffer[index] & 0xf0 | (c & 0xf)
 		@emit 'changed','block_meta',x,y,c
+		
 	get_block_meta : (x,y) ->
 		index = (x + (y << CHUNK_SIZE_BIT)) >> 1
 		if x & 1
@@ -64,6 +54,20 @@ class Map
 
 		@get_chunk X,Y,cb
 
+	create_chunk : (key,X,Y) -> new Chunk(key,X,Y)
+	delete_chunk : (key_or_chunk) ->
+		if key_or_chunk instanceof Chunk
+			chunk = key_or_chunk
+			{key} = chunk
+			chunk.destroy()
+			delete @chunks[key]
+		else
+			key = key_or_chunk
+			chunk = @chunks[key]
+			assert(chunk?,"invalid_chunk_key")
+			chunk.destroy()
+			delete @chunks[key]
+
 	get_chunk : (X,Y,cb = null) ->
 		key = @chunk_key(X,Y)	
 		chunk = @chunks[key]
@@ -80,7 +84,7 @@ class Map
 				else
 					chunk
 		else if cb
-			chunk =  @chunks[key] = new Chunk(key,X,Y)
+			chunk =  @chunks[key] = @create_chunk(key,X,Y)
 			chunk.pending = [cb]			
 			@generate chunk,(err) =>
 				cbs = chunk.pending
@@ -114,6 +118,7 @@ class Map
 		throw new Error('Not implemented')
 
 module.exports.Map = Map
+module.exports.Chunk = Chunk
 module.exports.CHUNK_SIZE = CHUNK_SIZE
 module.exports.CHUNK_SIZE_BIT = CHUNK_SIZE_BIT
 module.exports.CHUNK_SIZE_MASK = CHUNK_SIZE_MASK

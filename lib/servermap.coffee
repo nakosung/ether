@@ -1,6 +1,6 @@
 async = require 'async'
 _ = require 'underscore'
-{Map,CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
+{Map,Chunk,CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
 
 class ChunkView
 	constructor : (@map,@delta) ->
@@ -42,12 +42,31 @@ class ChunkView
 	destroy : ->
 		@unsubAll()
 
+class ServerChunk extends Chunk
+	constructor : (@key,@X,@Y) ->
+		super @key, @X, @Y
+
+		@numSubs = 0
+
+	sub : (fn) ->
+		@on 'changed', fn
+		@numSubs += 1
+
+	unsub : (fn) ->
+		@removeListener 'changed', fn
+		@numSubs -= 1
+		if @numSubs == 0
+			@emit 'nosub'
+
 class ServerMap extends Map
 	constructor : (@opts) ->
 		super
 
 	createView : (delta) ->		
 		new ChunkView(@,delta)
+
+	create_chunk : (key,X,Y) ->
+		new ServerChunk(key,X,Y)
 
 	generate : (chunk,cb) ->
 		init = (cb) =>
@@ -56,9 +75,7 @@ class ServerMap extends Map
 				async.series [
 					(cb) => @opts.save chunk, cb
 					(cb) => if chunk.numSubs == 0
-						#console.log 'drop off chunk', chunk.key
-						chunk.destroy()
-						delete @chunks[chunk.key]
+						@delete_chunk(chunk)
 				], ->					
 
 			fn = _.debounce(fn,@opts.delay_cold_chunk)

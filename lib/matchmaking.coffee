@@ -125,13 +125,13 @@ module.exports = (server) ->
 			console.log 'matchmaking sits on this node'.green.bold, server.id		
 			watch = deps.watch _.debounce(mm_watch,500), ['mm']
 
-	server.publish 'mm', (client,cb) ->
+	server.publish 'mm', (client) ->
 		deps.read client
-		cb null, me:client.mm
+		me:client.mm
 
-	server.publish 'mm:stats', (client,cb) ->		
+	server.publish 'mm:stats', (client) ->		
 		deps.read 'mm'				
-		cb null, stats							
+		stats							
 
 	mm_start = (client,cb) ->
 		client.mm = 

@@ -26,7 +26,7 @@ module.exports = (server) ->
 		else
 			c(client)
 
-	server.publish 'rpc', (client,cb) ->
+	server.publish 'rpc', (client,old,cb) ->
 		server.deps.read client
 
 		client.rpc = {}

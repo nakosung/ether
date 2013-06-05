@@ -10,8 +10,8 @@ module.exports = (server,opt) ->
 
 	# publish document set to client via 'publish'	
 	server.publishDocs = (pub,fn) ->
-		server.publish pub, (client,cb) ->
-			fn client,(err,docs) ->
+		server.publish pub, (client,old,cb) ->
+			fn client,old,(err,docs) ->
 				return cb(err) if err
 
 				o = {}
@@ -22,8 +22,8 @@ module.exports = (server,opt) ->
 
 	# publish a document to client via 'publish'
 	server.publishDoc = (pub,fn) ->
-		server.publish pub, (client,cb) ->
-			fn client,(err,doc) ->				
+		server.publish pub, (client,old,cb) ->
+			fn client,old,(err,doc) ->				
 				return cb(err) if err
 
 				cb(null,doc or {})

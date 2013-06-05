@@ -16,7 +16,7 @@ module.exports = (server,opts) ->
 
 	{rpc,deps,db} = server
 
-	world = null	
+	TheWorld = null	
 
 	chunk_mongodb = ->
 		chunk_db = db.collection 'chunk'
@@ -40,15 +40,15 @@ module.exports = (server,opts) ->
 		framerate : 20
 
 	class World extends events.EventEmitter
-		constructor : ->
+		constructor : (@id) ->
+			@age = 0
 			opts = delay_cold_chunk : delay_cold_chunk			
 			_.extend opts, chunk_mongodb()
 				
 			@map = new ServerMap opts
 			@tickTargets = []
 			@avatars = []
-			@players = []	
-			world = @
+			@players = []				
 			@interval = setInterval (=> @tick()), 1000 / config.framerate
 
 			fn = =>
@@ -58,16 +58,18 @@ module.exports = (server,opts) ->
 
 			@on 'noplayer', _.debounce(fn,world_shutdown_delay)
 
+		toString : -> ["TheWorld",@id].join(':')
+
 		createAvatar : (client,cb) ->
 			avatar = new Avatar(@,client)
 			@avatars.push avatar
 			avatar.init()
 			cb null, avatar
 
-		destroyAvatar : (avatar,cb) ->			
+		destroyAvatar : (avatar,cb) ->						
 			if avatar.active
-				@tickTargets.splice @tickTargets.indexOf avatar, 1
-			@avatars.splice @avatars.indexOf avatar, 1
+				@tickTargets.splice @tickTargets.indexOf(avatar), 1
+			@avatars.splice @avatars.indexOf(avatar), 1						
 			if @avatars.length == 0
 				@emit 'noplayer'
 			cb()
@@ -78,63 +80,45 @@ module.exports = (server,opts) ->
 				e.active = true
 
 		tick : ->
+			@age += 1
 			try				
 				d = []
 				@tickTargets.forEach (a) => 
 					if a.tick()
 						d.push a
 					else
-						a.active = false
-				@tickTargets = d
+						a.active = false				
 
-				# TODO : implement 'true' view
-				@avatars.forEach (a) =>
-					d.forEach (other) =>
-						if other != a
-							a.see other
+				@tickTargets = d
 			catch e 
 				console.log "WORLD",e.error
+
+			deps.write @
 				
 
 		destroy : ->
-			clearInterval(@interval)
-			world = null
+			clearInterval(@interval)			
 
-	allocate_world = (client,cb) ->
-		unless world
-			world = new World()
+	world_id = 0
+	allocate_world = (client,cb) ->		
+		unless TheWorld			
+			TheWorld = new World(world_id++)			
 			
-		cb(null,world)	
-
-
+		cb(null,TheWorld)	
+	
 	class Avatar extends Entity
 		constructor : (@world,@client) ->			
 			super @world.map, client.id, new Vector Math.floor(Math.random() * 100), Math.floor(Math.random() * 10)
 
 			@age = 0
-			@id = client.id
-
-			@chunk_view = @world.map.createView (key,args) => 
-				@send chunk_changed:
-					key:key					
-					args:args
+			@id = client.id			
+			@corrected = true
 
 		init : ->
-			@world.players.forEach (p) =>
-				@send add: id:p.id, pos:p.pos, age:p.age
-				p.send add: id:@id, pos:@pos, age:@age
-
-			@world.players.push(@)
-			@send spawn:id:@id,pos:@pos			
+			@world.players.push(@)			
 			@world.touch(@)			
 
 		destroy : (cb) ->
-			@chunk_view.destroy()
-
-			@world.players.forEach (p) =>
-				return if p == @
-				p.send remove:id:@id
-
 			@world.players.splice @world.players.indexOf(@), 1
 			@world.destroyAvatar @, cb
 		
@@ -150,11 +134,23 @@ module.exports = (server,opts) ->
 					(cb) => @map.get_chunk_abs tx, ty, cb
 					(chunk,cb) => 
 						chunk.set_block_type tx & CHUNK_SIZE_MASK, ty & CHUNK_SIZE_MASK, type
-						@see @
+						@breakSimulation()
 						cb()
 				], cb
 			else
 				cb('invalid')
+
+		follow : (other,cb) ->
+			for a in @world.avatars
+				if a.id == other
+					@warpTo a.pos
+					return cb()
+			return cb('invalid target')
+
+		warpTo : (pos) ->
+			@pos = pos
+			@vel = new Vector
+			@breakSimulation('warp')
 
 		dig : (dir,cb) ->
 			nx = Math.floor @pos.x + 0.5
@@ -171,22 +167,32 @@ module.exports = (server,opts) ->
 						chunk.set_block_type tx & CHUNK_SIZE_MASK, ty & CHUNK_SIZE_MASK, type
 						@flying = true
 						@world.touch(@)
-						@see @
+						@breakSimulation()
 						cb()
 				], cb
 			else
 				cb('invalid')
 
+		breakSimulation : (reason) ->
+			@age = @world.age
+#			console.log reason			
+
 		tick : ->
-			r = super 1
-			@age += 1
+			r = super 1			
 			r
 
 		send : (json) -> @client.send world:json
 
-		see : (other) ->
-			@send update: id:other.id, pos:other.pos, vel:other.vel, age:other.age
-
+		snapshot : (target) -> 
+			if target == @client								
+				if @corrected
+					@corrected = false
+					id:@id, pos:@pos, vel:@vel, age:@age, flying:@flying
+				else
+					id:@id, age:@age
+			else
+				id:@id, pos:@pos, vel:@vel, age:@age, flying:@flying
+		
 		# pos : Object{x,y}
 		updateClientPos : (pos) ->
 			claim = new Vector(pos)
@@ -203,28 +209,33 @@ module.exports = (server,opts) ->
 			upper_bound = margin * config.allowed_latency * config.framerate / 1000
 
 			# we need to re-position player
-			if error > upper_bound
-				console.log 'adjust pos', @pos,pos,error, upper_bound
-				@send update: id:@id,pos:@pos,age:@age,flying:@flying
+			if error > upper_bound				
+				@corrected = true
 
 			# if player's new suggestion is valid, use it
-			else unless @pos.equals claim
+			else if @vel.size() == 0 and not @pos.equals claim				
+				@breakSimulation('claim')
 				@world.touch(@)
 				@pos = claim
 
 		# vel : Object{x,y}
 		updateClientVel : (vel) ->
 			# if velocity hasn't been changed, skip it!
-			if not @vel.equals vel
-				# is player jumping?
-				if vel.y < 0
-					# mark we are flying
-					@flying = true
-					@vel.y = Math.min(@vel.y,vel.y)
+			if @vel.x != vel.x
+				@breakSimulation('vel.x')				
 				# horizontal velocity :)
 				@vel.x = vel.x
 				# yes, we need to be ticked
 				@world.touch(@)
+
+			if @vel.y != vel.y and not @flying				
+				@breakSimulation('flying')				
+				# horizontal velocity :)
+				@vel.y = vel.y
+				@flying = vel.y < 0
+				# yes, we need to be ticked
+				@world.touch(@)
+
 
 		# client sends pos, vel periodically only if necessary
 		updateClientData : (p,cb) ->			
@@ -235,7 +246,42 @@ module.exports = (server,opts) ->
 			@updateClientPos(p.pos) if p.pos?								
 
 			# all synchronous
-			cb()		
+			cb()
+
+	server.publish 'world', (client,old) ->
+		# relys on client state
+		deps.read client
+
+		world = client.avatar?.world
+		return {} unless world
+
+		# relys on world
+		deps.read world
+
+		context = old?.$?.context or {}
+
+		avatars = {}
+
+		world.avatars.map (a) -> 
+			o = old?.avatars?[a.id]
+			r = null
+			if o?.age != a.age or not o?
+				r = a.snapshot(client)
+			else if o?.age == a.age
+				r = age:a.age
+			else
+				return	
+			r.owned = true if (client.avatar == a)
+			avatars[a.id] = r
+
+		payload = age:world.age, avatars:avatars
+
+		$ = payload.$ = context : context
+
+		$.diff = (old,curr,diff_fn) ->
+			diff_fn old, curr
+
+		payload
 
 	rpc.world =
 		__check__ : rpc.auth.__check__
@@ -244,17 +290,21 @@ module.exports = (server,opts) ->
 			@assert_fn cb			
 
 			fn = (taker,cb) ->
+				if client.chunk_view?
+					client.chunk_view.destroy()
+
 				avatar = client.avatar
 				if avatar
+					console.log 'left', client.avatar.id
+
 					delete client.avatar
 					avatar.destroy(cb)
-
-					console.log 'left'
+					
 					deps.write client
 				else
 					cb()
 
-			token = 'avatar:'+client.auth
+			token = 'avatar:'+client.auth			
 
 			async.waterfall [
 				(cb) -> async.series [
@@ -271,7 +321,10 @@ module.exports = (server,opts) ->
 			else
 				async.waterfall [
 					(cb) -> allocate_world client, cb
-					(world,cb) -> world.createAvatar client, cb
+					(world,cb) -> 
+						client.chunk_view = world.map.createView (key,args) => 
+							client.send world:chunk_changed:{key:key,args:args}
+						world.createAvatar client, cb
 					(avatar,cb) -> 						
 						client.avatar = avatar						
 						console.log 'joined'
@@ -283,15 +336,15 @@ module.exports = (server,opts) ->
 			cb null, Date.now()
 
 		chunk : 
-			sub : (client,key,cb) ->			
-				if client.avatar?.chunk_view?
-					client.avatar.chunk_view.sub(key,cb)
+			sub : (client,key,cb) ->
+				if client.chunk_view?
+					client.chunk_view.sub(key,cb)
 				else
 					cb('no avatar')
 
 			unsub : (client,key,cb) ->
-				if client.avatar?.chunk_view?
-					client.avatar.chunk_view.unsub(key,cb)
+				if client.chunk_view?
+					client.chunk_view.unsub(key,cb)
 				else
 					cb('no avatar')
 
@@ -301,6 +354,8 @@ module.exports = (server,opts) ->
 				client.avatar.put dir, type, cb
 			dig : (client,dir,cb) ->
 				client.avatar.dig dir, cb
+			follow : (client,other,cb) ->
+				client.avatar.follow other, cb
 				
 		update : (client,p,cb) ->
 			return cb('invalid state') unless client.avatar?

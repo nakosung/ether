@@ -12,7 +12,7 @@ opts =
 server = ether(plugins,opts)
 
 article_test = (col,root) ->
-	server.publishDocs 'test', (client,cb) -> col.find({}).limit(10).sort when:-1,cb
+	server.publishDocs 'test', (client,old,cb) -> col.find({}).limit(10).sort when:-1,cb
 	root.addItem = (client,msg,cb) -> col.save {author:client.tag(),msg:msg,when:Date.now()}, cb
 	root.deleteItem = (client,id,cb) -> col.remove {_id:db.ObjectId(id),author:client.tag()},cb
 	root.likeItem = (client,id,cb) -> 

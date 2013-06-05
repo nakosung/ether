@@ -15,6 +15,15 @@
 			<dd>dig</dd>
 			<dt>K</dt>
 			<dd>put</dd>
-		</dl>		
+		</dl>				
+	</div>
+</div>
+<div class="row">
+	<div class="span7"></div>
+	<div class="span5">
+		<div>{{world.age}}</div>
+		<div ng-repeat="(id,avatar) in world.avatars">
+			{{id}} : {{avatar}} <button class="btn btn-small" ng-hide="avatar.owned" ng-click="rpc.world.actions.follow(id)">Follow</button>
+		</div>
 	</div>
 </div>

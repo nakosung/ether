@@ -75,41 +75,44 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 					console.error 'no rpc for now'
 
 			@handler = $rootScope.$on 'rpc:update', (x) => enter()
+			@view = {}
 
 			enter()
 
 			@sprite_id = 0
 
-		createEntity : (opt) ->
-			#console.log 'createEntity', opt
-			{id,pos,vel,age} = opt
+		createEntity : (id,opt) ->
+			#console.log 'createEntity', id, JSON.stringify(opt)
+			{pos,vel,age} = opt
 			@entities[opt.id] = e = new logic.ClientEntity(@map,id,pos,vel,age)
 			sprite_id = "sprite#{@sprite_id++}"
 			@pg.addSprite sprite_id, posx:e.pos.x,posy:e.pos.y,width:TILE_SIZE,height:TILE_SIZE,animation:@block,geometry:$.gQ.GEOMETRY_RECTANGLE
 			e.sprite = $("#"+sprite_id)		
 
-			@updateEntity opt
+			@updateEntity id,opt
 
-		updateEntity : (opt) ->			
-			#console.log 'updateEntity', opt
-			e = @entities[opt.id]
+		updateEntity : (id,opt) ->			
+			#console.log 'updateEntity', id, JSON.stringify(opt)
+			e = @entities[id]
 			if e
 				e.age = opt.age
 				e.localAge = 0
-				e.pos.set opt.pos	
-				e.vel.set opt.vel		
+
+				if opt.pos? and opt.vel?				
+					e.pos.set opt.pos	
+					e.vel.set opt.vel		
 				e
 			else
-				console.log 'invalid', opt
+				console.log 'invalid'
 
 
-		deleteEntity : (opt) ->
+		deleteEntity : (id) ->
 			#console.log 'deleteEntity', opt
 
-			e = @entities[opt.id]
+			e = @entities[id]
 			e?.sprite?.remove()
 			@avatar = undefined if e == @avatar
-			delete @entities[opt.id]
+			delete @entities[id]
 
 		init : ->			
 			@initialized = true
@@ -130,10 +133,13 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 				down:83
 				space:32
 
+			@view_handler = $rootScope.$on "collection:update", (e,collection) =>
+				@handleView collection.data if collection.name == "world"
+
 			@packet_handler = $rootScope.$on 'sockjs.json', (e,json) =>	
 				return unless json.world?
 
-				@handlePacket json.world			
+				@handlePacket json.world
 
 			@measureTimeDiffAndRoundtrip (err) =>
 				unless err
@@ -156,13 +162,29 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 		keypressed : (key) ->
 			$.gQ.keyTracker[@keymap[key] or key.charCodeAt(0)]		
 
-		handlePacket : (json) ->
-			#console.log json
+		handleView : (data) ->
+			newView = {}
+
+			for k,v of data.avatars				
+				unless @view[k]?
+					e = @createEntity(k,v)
+					@avatar = e if v.owned
+				else
+					if @view[k] < v.age
+						@updateEntity(k,v)
+
+					delete @view?[k]
+
+				newView[k] = v.age
 			
-			@avatar = @createEntity(json.spawn) if json.spawn?
-			@createEntity(json.add) if json.add?
-			@updateEntity(json.update) if json.update?
-			@deleteEntity(json.remove) if json.remove?
+			for k,v of @view
+				@deleteEntity(k)
+
+			@view = newView
+
+		handlePacket : (json) ->
+			#console.log json			
+			
 			if json.chunk_changed?
 				data = json.chunk_changed
 				chunk = @map.chunks[data.key]
@@ -235,7 +257,8 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 		destroy : ->
 			if @initialized				
 				@packet_handler()
-				@packet_handler = null
+				@view_handler()
+				@packet_handler = @view_handler = null
 				@initialized = false
 				rpc.world.leave()
 
@@ -245,7 +268,8 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 			console.log 'destroyed', @
 	World
 
-app.controller 'WorldCtrl', ($scope,rpc,world) ->	
+app.controller 'WorldCtrl', ($scope,rpc,world,autocol) ->	
+	autocol $scope, 'world'	
 	document.oncontextmenu = -> false
 	$(document).mousedown (e) ->
 		if e.button == 2

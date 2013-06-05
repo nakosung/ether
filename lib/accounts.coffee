@@ -83,8 +83,8 @@ module.exports = (server) ->
 
 	server.ClientClass::tag = -> {id:@auth,name:@name}
 	
-	server.publishDocs 'users_online', (client,cb) -> users.findAll({online:$ne:null},{name:true},cb)
-	server.publishDoc 'me', (client,cb) -> 		
+	server.publishDocs 'users_online', (client,old,cb) -> users.findAll({online:$ne:null},{name:true},cb)
+	server.publishDoc 'me', (client,old,cb) -> 		
 		server.deps.read client		
 		if client.auth
 			users.findOne {_id:client.auth,online:String(client)}, {pwd:false,heartbeat:false}, cb

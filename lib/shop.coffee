@@ -24,7 +24,7 @@ module.exports = (server) ->
 		console.log q, program.update
 		buyer_db.update q, program.update, db.expect('condition not met',cb,1)
 
-	server.publishDocs 'sku', (client,cb) ->
+	server.publishDocs 'sku', (client,old,cb) ->
 		deps.read 'debug'
 		skus.findAll {}, {program:false}, cb
 

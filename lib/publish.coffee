@@ -42,7 +42,7 @@ module.exports = (server) ->
 					r = null
 
 					@watch.begin()
-					r = p.call null,@client,fin
+					r = p.call null,@client,@snapshot,fin
 					@watch.end()					
 
 					fin(null,r) if _.isObject(r)
@@ -61,18 +61,28 @@ module.exports = (server) ->
 				@queued = true
 			else
 				@syncing = true
-				@grab (err,curr) =>					
+				@grab (err,curr) =>						
 					@syncing = false
 					
 					unless err
-						old = @snapshot												
-						diff = jsondiffpatch.diff old, curr		
+						$ = curr.$
+						delete curr['$']
+
+						old = @snapshot
+						diff_fn = jsondiffpatch.diff
+
+						if $?.diff?
+							diff = $.diff old, curr, diff_fn
+						else
+							diff = diff_fn old, curr
+
 						if diff
 							#console.log "diffing", @name, "D".green.bold, curr, old, diff
 							#diff = curr
 							@snapshot = JSON.parse JSON.stringify curr
 							stats.sent.json++
 							@client.send channel:@name, diff:diff
+							@snapshot.$ = $ if $
 						
 					if @queued
 						@queued = false
@@ -100,7 +110,7 @@ module.exports = (server) ->
 			@reqs = undefined
 			@client.subs = undefined
 
-		subscribe : (req) ->						
+		subscribe : (req) ->
 			name = req.channel
 			unless @reqs[name]
 				@reqs[name] = new Collection(@client,name)
@@ -110,9 +120,9 @@ module.exports = (server) ->
 			@reqs[name]?.destroy()
 			delete @reqs[name]
 	
-	server.on 'client:data', (client,json) ->	
+	server.on 'client:data', (client,json) ->
 		if json.req
-			client.subs = new Client(client) unless client.subs?		
+			client.subs = new Client(client) unless client.subs?
 			client.subs.subscribe json.req
 
 		if json.unreq and client.subs			
@@ -122,8 +132,8 @@ module.exports = (server) ->
 		pubs[pub]?.emit 'update'
 
 
-	server.publish 'sync:stat', (client,cb) ->
+	server.publish 'sync:stat', (client) ->
 		deps.read '5sec'
-		cb null, stats
+		stats
 
 	setInterval (-> deps.write '5sec'), 5000
