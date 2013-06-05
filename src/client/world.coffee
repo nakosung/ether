@@ -204,7 +204,7 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 			if @avatar?
 				@map.fit @avatar.pos
 
-				VELOCITY = 0.3
+				VELOCITY = 0.25
 
 				actions = []
 

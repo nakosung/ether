@@ -1,13 +1,13 @@
 async = require 'async'
 _ = require 'underscore'
-{Map,Chunk,CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
+{Map,Chunk,CHUNK_SIZE_MASK,CHUNK_SIZE} = require '../shared/map'
 
 class ChunkView
 	constructor : (@map,@delta) ->
-		@chunks = {}
+		@chunks = {}		
 
 	sub : (key,cb) ->			
-		# console.log 'sub_chunk',key
+		#console.log 'sub_chunk',key
 		return cb('already subed') if @chunks[key]
 
 		@chunks[key] = null
@@ -19,15 +19,17 @@ class ChunkView
 		async.waterfall [
 			(cb) => @map.get_chunk X,Y,cb
 			(chunk,cb) =>
-				@chunks[key] = => chunk.unsub fn					
+				@chunks[key] = 
+					chunk : chunk
+					unsub : => chunk.unsub fn
 				chunk.sub fn				
 				cb null,chunk.buffer.toJSON()
 		], cb
 
 	unsub : (key,cb) ->
-		# console.log 'unsub_chunk',key
+		#console.log 'unsub_chunk',key
 		if @chunks[key]
-			@chunks[key]()
+			@chunks[key].unsub()
 			delete @chunks[key]
 			cb()
 		else
@@ -35,7 +37,7 @@ class ChunkView
 
 	unsubAll : ->
 		for k,v of @chunks
-			v?()
+			v?.unsub()
 
 		@chunks = {}			
 
@@ -47,6 +49,7 @@ class ServerChunk extends Chunk
 		super @key, @X, @Y
 
 		@numSubs = 0
+		@entities = {}
 
 	sub : (fn) ->
 		@on 'changed', fn
@@ -57,6 +60,12 @@ class ServerChunk extends Chunk
 		@numSubs -= 1
 		if @numSubs == 0
 			@emit 'nosub'
+
+	join : (e) ->
+		@entities[e.id] = e		
+
+	leave : (e) ->
+		delete @entities[e.id]
 
 class ServerMap extends Map
 	constructor : (@opts) ->

@@ -12,7 +12,7 @@ module.exports = (grunt) ->
 				options:
 					interrupt:yes
 			server:
-				files: 'lib/**/*.coffee'
+				files: 'src/server/*.coffee'
 				tasks: ['server']				
 				options:
 					interrupt:yes
@@ -40,8 +40,8 @@ module.exports = (grunt) ->
 					bare:yes
 					sourceMap:true
 				expand:true
-				cwd:'lib'
-				src:['**/*.coffee']
+				cwd:'src'
+				src:['server/*.coffee']
 				dest:'build/'
 				ext:'.js'
 		shell:

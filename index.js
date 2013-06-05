@@ -1,2 +1,2 @@
 require('source-map-support').install()
-require('./build/main')
+require('./build/server/main')

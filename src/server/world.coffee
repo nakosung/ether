@@ -1,7 +1,7 @@
 async = require 'async'
-{Vector} = require './shared/vector'
-{Entity} = require './shared/entity'
-{CHUNK_SIZE_MASK,CHUNK_SIZE} = require './shared/map'
+{Vector} = require '../shared/vector'
+{Entity} = require '../shared/entity'
+{CHUNK_SIZE_MASK,CHUNK_SIZE} = require '../shared/map'
 {ServerMap} = require './servermap'
 events = require 'events'
 _ = require 'underscore'
@@ -9,6 +9,7 @@ _ = require 'underscore'
 module.exports = (server,opts) ->
 	server.use 'accounts'
 	server.use 'mongodb'
+	server.use 'worldview'
 
 	delay_save_chunk = opts?.delay_save_chunk or 5000
 	delay_cold_chunk = opts?.delay_cold_chunk or 5000
@@ -113,12 +114,21 @@ module.exports = (server,opts) ->
 			@age = 0
 			@id = client.id			
 			@corrected = true
+			@chunk = null
+
+		migrateTo : (chunk) ->
+			return if chunk == @chunk 
+			@chunk.leave(@) if @chunk
+			@chunk = chunk
+			@chunk.join(@)
 
 		init : ->
 			@world.players.push(@)			
 			@world.touch(@)			
 
 		destroy : (cb) ->
+			@chunk.leave(@) if @chunk
+			@chunk = null
 			@world.players.splice @world.players.indexOf(@), 1
 			@world.destroyAvatar @, cb
 		
@@ -179,6 +189,14 @@ module.exports = (server,opts) ->
 
 		tick : ->
 			r = super 1			
+
+			async.waterfall [
+				(cb) => @map.get_chunk_abs @pos.x,@pos.y, cb
+				(chunk,cb) => 
+					@migrateTo chunk
+					cb()
+			], ->
+
 			r
 
 		send : (json) -> @client.send world:json
@@ -248,40 +266,7 @@ module.exports = (server,opts) ->
 			# all synchronous
 			cb()
 
-	server.publish 'world', (client,old) ->
-		# relys on client state
-		deps.read client
-
-		world = client.avatar?.world
-		return {} unless world
-
-		# relys on world
-		deps.read world
-
-		context = old?.$?.context or {}
-
-		avatars = {}
-
-		world.avatars.map (a) -> 
-			o = old?.avatars?[a.id]
-			r = null
-			if o?.age != a.age or not o?
-				r = a.snapshot(client)
-			else if o?.age == a.age
-				r = age:a.age
-			else
-				return	
-			r.owned = true if (client.avatar == a)
-			avatars[a.id] = r
-
-		payload = age:world.age, avatars:avatars
-
-		$ = payload.$ = context : context
-
-		$.diff = (old,curr,diff_fn) ->
-			diff_fn old, curr
-
-		payload
+	
 
 	rpc.world =
 		__check__ : rpc.auth.__check__
