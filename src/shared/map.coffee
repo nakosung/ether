@@ -10,6 +10,9 @@ class Chunk extends events.EventEmitter
 	constructor : (@key,@X,@Y) ->		
 		@buffer = new Buffer( CHUNK_SIZE * CHUNK_SIZE * 1 )			
 
+	toString : ->
+		@key
+
 	set_block_type : (x,y,c) ->		
 		@buffer[x + (y << CHUNK_SIZE_BIT)] = c & 0xff		
 		@emit 'changed','block_type',x,y,c

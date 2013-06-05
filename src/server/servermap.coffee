@@ -3,8 +3,11 @@ _ = require 'underscore'
 {Map,Chunk,CHUNK_SIZE_MASK,CHUNK_SIZE} = require '../shared/map'
 
 class ChunkView
-	constructor : (@map,@delta) ->
+	constructor : (@id, @map,@delta) ->
 		@chunks = {}		
+
+	toString : ->
+		@id
 
 	sub : (key,cb) ->			
 		#console.log 'sub_chunk',key
@@ -22,7 +25,7 @@ class ChunkView
 				@chunks[key] = 
 					chunk : chunk
 					unsub : => chunk.unsub fn
-				chunk.sub fn				
+				chunk.sub fn
 				cb null,chunk.buffer.toJSON()
 		], cb
 
@@ -49,6 +52,7 @@ class ServerChunk extends Chunk
 		super @key, @X, @Y
 
 		@numSubs = 0
+		@numEntities = 0
 		@entities = {}
 
 	sub : (fn) ->
@@ -58,21 +62,31 @@ class ServerChunk extends Chunk
 	unsub : (fn) ->
 		@removeListener 'changed', fn
 		@numSubs -= 1
-		if @numSubs == 0
+
+		@check()
+
+	# check if we can vanish silently!
+	check : ->		
+		if @numSubs == 0 and @numEntities == 0
 			@emit 'nosub'
 
 	join : (e) ->
-		@entities[e.id] = e		
+		unless @entities[e.id]
+			@entities[e.id] = e		
+			@numEntities += 1
 
 	leave : (e) ->
-		delete @entities[e.id]
+		if @entities[e.id]
+			delete @entities[e.id]
+			@numEntities -= 1
+			@check()
 
 class ServerMap extends Map
 	constructor : (@opts) ->
 		super
 
-	createView : (delta) ->		
-		new ChunkView(@,delta)
+	createView : (id,delta) ->		
+		new ChunkView(id,@,delta)
 
 	create_chunk : (key,X,Y) ->
 		new ServerChunk(key,X,Y)

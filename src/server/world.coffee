@@ -36,6 +36,23 @@ module.exports = (server,opts) ->
 				else
 					cb('new')
 
+	avatar_mongodb = ->
+		avatar_db = db.collection 'entity'
+
+		save : (entity,cb) ->
+			avatar_db.save {_id:entity.id,data:JSON.stringify(entity.snapshot('db'))}, cb
+
+		load : (entity,cb) ->
+			console.log "loading entity",entity.id
+			avatar_db.findOne {_id:entity.id}, (err,doc) =>
+				if err
+					cb(err)
+				else if doc
+					entity.apply_snapshot JSON.parse(doc.data)
+					cb(null,entity)
+				else
+					cb('new')
+
 	config = 
 		allowed_latency : 1000
 		framerate : 20
@@ -45,11 +62,12 @@ module.exports = (server,opts) ->
 			@age = 0
 			opts = delay_cold_chunk : delay_cold_chunk			
 			_.extend opts, chunk_mongodb()
+
+			@avatar_db = avatar_mongodb()
 				
 			@map = new ServerMap opts
 			@tickTargets = []
-			@avatars = []
-			@players = []				
+			@avatars = []			
 			@interval = setInterval (=> @tick()), 1000 / config.framerate
 
 			fn = =>
@@ -64,16 +82,25 @@ module.exports = (server,opts) ->
 		createAvatar : (client,cb) ->
 			avatar = new Avatar(@,client)
 			@avatars.push avatar
-			avatar.init()
-			cb null, avatar
+			@touch avatar
+
+			@avatar_db.load avatar, (err) =>
+				unless err
+					cb(null,avatar)
+				else if err == 'new'
+					cb(null,avatar)
+				else 
+					cb(err)
 
 		destroyAvatar : (avatar,cb) ->						
 			if avatar.active
 				@tickTargets.splice @tickTargets.indexOf(avatar), 1
+
 			@avatars.splice @avatars.indexOf(avatar), 1						
 			if @avatars.length == 0
 				@emit 'noplayer'
-			cb()
+
+			@avatar_db.save avatar, cb
 
 		touch : (e) ->
 			unless e.active
@@ -81,6 +108,7 @@ module.exports = (server,opts) ->
 				e.active = true
 
 		tick : ->
+			return unless @tickTargets.length
 			@age += 1
 			try				
 				d = []
@@ -92,10 +120,7 @@ module.exports = (server,opts) ->
 
 				@tickTargets = d
 			catch e 
-				console.log "WORLD",e.error
-
-			deps.write @
-				
+				console.log "WORLD",e.error			
 
 		destroy : ->
 			clearInterval(@interval)			
@@ -105,14 +130,13 @@ module.exports = (server,opts) ->
 		unless TheWorld			
 			TheWorld = new World(world_id++)			
 			
-		cb(null,TheWorld)	
+		cb(null,TheWorld)
 
 	class Avatar extends Entity
 		constructor : (@world,@client) ->			
-			super @world.map, client.id, new Vector Math.floor(Math.random() * 100), Math.floor(Math.random() * 10)
+			super @world.map, client.auth, new Vector Math.floor(Math.random() * 100), Math.floor(Math.random() * 10)
 
-			@age = 0
-			@id = client.id			
+			@age = 0			
 			@corrected = true
 			@chunk = null
 
@@ -120,16 +144,11 @@ module.exports = (server,opts) ->
 			return if chunk == @chunk 
 			@chunk.leave(@) if @chunk
 			@chunk = chunk
-			@chunk.join(@)
-
-		init : ->
-			@world.players.push(@)			
-			@world.touch(@)			
+			@chunk.join(@)		
 
 		destroy : (cb) ->
 			@chunk.leave(@) if @chunk
-			@chunk = null
-			@world.players.splice @world.players.indexOf(@), 1
+			@chunk = null			
 			@world.destroyAvatar @, cb
 		
 		## ACTIONS
@@ -200,11 +219,17 @@ module.exports = (server,opts) ->
 					@migrateTo chunk
 					cb()
 			], =>
+				deps.write @chunk if @chunk
 				@busy = false
 
 			r
 
 		send : (json) -> @client.send world:json
+
+		apply_snapshot : (snapshot) ->
+			@pos.set snapshot.pos if snapshot.pos?
+			@vel.set snapshot.vel if snapshot.vel?
+			@flying = snapshot.flying if snapshot.flying?
 
 		snapshot : (target) -> 
 			if target == @client								
@@ -213,6 +238,8 @@ module.exports = (server,opts) ->
 					id:@id, pos:@pos, vel:@vel, age:@age, flying:@flying
 				else
 					id:@id, age:@age
+			else if target == 'db'
+				pos:@pos, vel:@vel, age:@age, flying:@flying
 			else
 				id:@id, pos:@pos, vel:@vel, age:@age, flying:@flying
 		
@@ -261,12 +288,14 @@ module.exports = (server,opts) ->
 
 
 		# client sends pos, vel periodically only if necessary
-		updateClientData : (p,cb) ->			
+		updateClientData : (p,cb) ->						
 			# adjust client position
 			@updateClientVel(p.vel) if p.vel?				
 
 			# position update
 			@updateClientPos(p.pos) if p.pos?								
+
+			deps.write @chunk if @chunk
 
 			# all synchronous
 			cb()
@@ -280,6 +309,7 @@ module.exports = (server,opts) ->
 			@assert_fn cb			
 
 			fn = (taker,cb) ->
+				console.log 'leaving!'
 				if client.chunk_view?
 					client.chunk_view.destroy()
 
@@ -312,7 +342,7 @@ module.exports = (server,opts) ->
 				async.waterfall [
 					(cb) -> allocate_world client, cb
 					(world,cb) -> 
-						client.chunk_view = world.map.createView (key,args) => 
+						client.chunk_view = world.map.createView 'chunkview:'+client.id, (key,args) => 
 							client.send world:chunk_changed:{key:key,args:args}
 						world.createAvatar client, cb
 					(avatar,cb) -> 						
@@ -328,13 +358,23 @@ module.exports = (server,opts) ->
 		chunk : 
 			sub : (client,key,cb) ->
 				if client.chunk_view?
-					client.chunk_view.sub(key,cb)
+					async.waterfall [
+						(cb) -> client.chunk_view.sub(key,cb)
+						(result,cb) -> 
+							deps.write client
+							cb(null,result)
+					], cb
 				else
 					cb('no avatar')
 
 			unsub : (client,key,cb) ->
 				if client.chunk_view?
-					client.chunk_view.unsub(key,cb)
+					async.series [
+						(cb) -> client.chunk_view.unsub(key,cb)
+						(cb) -> 
+							deps.write client
+							cb(null)
+					], cb
 				else
 					cb('no avatar')
 

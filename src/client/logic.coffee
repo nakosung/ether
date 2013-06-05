@@ -11,7 +11,7 @@ class ClientEntity extends Entity
 
 	tick : (deltaTick) ->
 		super deltaTick			
-		@sprite?.xy (@pos.x - @map.x) * TILE_SIZE, (@pos.y - @map.y) * TILE_SIZE
+		@group?.xy (@pos.x - @map.x) * TILE_SIZE, (@pos.y - @map.y) * TILE_SIZE
 
 	record : ->
 		[new Vector(@pos),new Vector(@vel)]			
@@ -31,6 +31,8 @@ class ClientMap extends Map
 	constructor : (@pg,@opts) ->
 		super
 
+		@background = @pg.addGroup "background", width:@pg.width(), height:@pg.height()
+
 		@view = 
 			width : Math.floor @opts.width / TILE_SIZE
 			height : Math.floor @opts.height / TILE_SIZE
@@ -45,7 +47,7 @@ class ClientMap extends Map
 		for x in [0..31]
 			@tiles.push [0..31].map (y) =>
 				sprite_id = "map#{x}_#{y}"
-				@pg.addSprite sprite_id, posx:TILE_SIZE*x,posy:TILE_SIZE*y,width:TILE_SIZE,height:TILE_SIZE,animation:null,geometry:$.gQ.GEOMETRY_RECTANGLE
+				@background.addSprite sprite_id, posx:TILE_SIZE*x,posy:TILE_SIZE*y,width:TILE_SIZE,height:TILE_SIZE,animation:null,geometry:$.gQ.GEOMETRY_RECTANGLE
 				$("#"+sprite_id)
 
 		@visible_chunks = []
@@ -64,7 +66,7 @@ class ClientMap extends Map
 				sx = xx - @x
 				sy = yy - @y
 				type = chunk.get_block_type x,y	
-				console.log x,y,xx,yy,sx,sy,chunk.X,chunk.Y,@x,@y	
+				#console.log x,y,xx,yy,sx,sy,chunk.X,chunk.Y,@x,@y	
 				@tiles[sx][sy].setAnimation @blocks[type]
 
 		chunk.on 'destroy', =>

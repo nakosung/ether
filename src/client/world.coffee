@@ -55,6 +55,8 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 
 			@map = new logic.ClientMap(@pg,width:@opts.width,height:@opts.height)
 
+			@players = @pg.addGroup "players", width:@pg.width(), height:@pg.height()
+
 			enter = =>
 				console.log 'trying to enter'
 				if rpc.world?.enter?
@@ -86,8 +88,23 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 			{pos,vel,age} = opt
 			@entities[opt.id] = e = new logic.ClientEntity(@map,id,pos,vel,age)
 			sprite_id = "sprite#{@sprite_id++}"
-			@pg.addSprite sprite_id, posx:e.pos.x,posy:e.pos.y,width:TILE_SIZE,height:TILE_SIZE,animation:@block,geometry:$.gQ.GEOMETRY_RECTANGLE
-			e.sprite = $("#"+sprite_id)		
+			GROUP_WIDTH = 200
+			GROUP_HEIGHT = 100
+			e.group = @players.addGroup sprite_id, width:GROUP_WIDTH, height:GROUP_WIDTH
+			e.group.addSprite "real"+sprite_id, width:TILE_SIZE,height:TILE_SIZE,animation:@block,geometry:$.gQ.GEOMETRY_RECTANGLE
+			e.group.xy e.pos.x,posy:e.pos.y
+			e.sprite = $("#"+sprite_id)	
+			e.tag = $("<div/>")
+			e.tag.text id
+			e.tag.css
+				color:'yellow'
+				position:'relative'
+				top:'-20px'
+				'text-align':'center'
+				'font-size':'9px'
+				left:-Math.floor(100 - TILE_SIZE/2) + 'px'
+				width:GROUP_WIDTH + 'px'
+			e.tag.appendTo(e.sprite)
 
 			@updateEntity id,opt
 
@@ -110,7 +127,7 @@ app.factory 'world', (rpc,autocol,$rootScope,$location) ->
 			#console.log 'deleteEntity', opt
 
 			e = @entities[id]
-			e?.sprite?.remove()
+			e?.group?.remove()
 			@avatar = undefined if e == @avatar
 			delete @entities[id]
 

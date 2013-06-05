@@ -1,18 +1,17 @@
 _ = require 'underscore'
 
+# 'world' is evaluated when 'important' chunks are noisy
+# if there are no events, publish function isn't evaluated at all! (performance-wise)
 module.exports = (server) ->
 	{deps} = server
 
-	server.publish 'world', (client,old) ->
+	server.publish 'world', (client,old) ->		
 		# relys on client state
 		deps.read client
 
 		world = client.avatar?.world
 		chunk_view = client.chunk_view
 		return {} unless world and chunk_view?
-
-		# relys on world
-		deps.read world				
 
 		avatars = {}
 
@@ -23,10 +22,12 @@ module.exports = (server) ->
 
 		# for each all subscribed chunks
 		for k,s of chunk_view.chunks
+			deps.read s?.chunk
+
 			# for each entities in the chunk
 			for k,v of s?.chunk.entities
 				visible_avatars[k] = v
-		
+
 		# all visible avatars
 		for id,a of visible_avatars
 			o = old?.avatars?[id]
@@ -56,9 +57,7 @@ module.exports = (server) ->
 		# save 'sneaky' context with '$'
 		$ = old?.$
 		unless $?
-			$ = 
-				context : {}
-				diff : (old,curr,diff_fn) -> diff_fn old, curr
+			$ = context : {}				
 
 		payload.$ = $		
 		payload
