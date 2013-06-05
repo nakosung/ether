@@ -109,6 +109,7 @@ module.exports = (server,opts) ->
 
 		tick : ->
 			return unless @tickTargets.length
+			
 			@age += 1
 			try				
 				d = []
