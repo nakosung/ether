@@ -106,7 +106,7 @@ module.exports = (server,opts) ->
 			TheWorld = new World(world_id++)			
 			
 		cb(null,TheWorld)	
-	
+
 	class Avatar extends Entity
 		constructor : (@world,@client) ->			
 			super @world.map, client.id, new Vector Math.floor(Math.random() * 100), Math.floor(Math.random() * 10)
@@ -188,14 +188,19 @@ module.exports = (server,opts) ->
 #			console.log reason			
 
 		tick : ->
-			r = super 1			
+			# if async job isn't completed yet?
+			return if @busy			
+			@busy = true
+
+			r = super 1	
 
 			async.waterfall [
 				(cb) => @map.get_chunk_abs @pos.x,@pos.y, cb
 				(chunk,cb) => 
 					@migrateTo chunk
 					cb()
-			], ->
+			], =>
+				@busy = false
 
 			r
 

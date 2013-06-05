@@ -12,36 +12,53 @@ module.exports = (server) ->
 		return {} unless world and chunk_view?
 
 		# relys on world
-		deps.read world
-
-		context = old?.$?.context or {}
+		deps.read world				
 
 		avatars = {}
 
 		visible_avatars = {}
+
+		# should include myself
 		visible_avatars[client.avatar.id] = client.avatar
 
-		for k,s of chunk_view.chunks						
+		# for each all subscribed chunks
+		for k,s of chunk_view.chunks
+			# for each entities in the chunk
 			for k,v of s?.chunk.entities
 				visible_avatars[k] = v
 		
+		# all visible avatars
 		for id,a of visible_avatars
 			o = old?.avatars?[id]
+
+			# result
 			r = null
+
+			# if is updated or newly shown?
 			if o?.age != a.age or not o?
 				r = a.snapshot(client)
+			# if is upto-date
 			else if o?.age == a.age
 				r = age:a.age
+			# otherwise, skip it
 			else
 				return	
+
+			# if we are owning it, mark it!
 			r.owned = true if (client.avatar == a)
+
+			# save off
 			avatars[id] = r
 
+		# this is the final payload
 		payload = age:world.age, avatars:avatars
 
-		$ = payload.$ = context : context
+		# save 'sneaky' context with '$'
+		$ = old?.$
+		unless $?
+			$ = 
+				context : {}
+				diff : (old,curr,diff_fn) -> diff_fn old, curr
 
-		$.diff = (old,curr,diff_fn) ->
-			diff_fn old, curr
-
+		payload.$ = $		
 		payload
