@@ -15,10 +15,10 @@ module.exports = (server,opts) ->
 
 	app = express()		
 	app.use '/', express.static('public')
-	app.use '/lib', express.static('lib/client')
+	app.use '/lib', express.static('build/public')
 
 	watch @dir + '/public', fileUpdated
-	watch @dir + '/lib/client', fileUpdated
+	watch @dir + '/build/public', fileUpdated
 
 	# workaround for sock.js + express impedence mismatch
 	httpServer = require('http').createServer app		

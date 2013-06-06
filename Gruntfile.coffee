@@ -46,7 +46,7 @@ module.exports = (grunt) ->
 				ext:'.js'
 		shell:
 			browserify:
-				command: 'browserify -d build/client/app.js -o public/lib/bundle.js'
+				command: 'browserify -d build/client/app.js -o build/public/bundle.js'
 				#command: "browserify -d -t coffeeify src/client/app.coffee -o public/lib/bundle.js"
 				options:
 					stdout:true
