@@ -5,29 +5,38 @@ _ = require 'underscore'
 module.exports = (server) ->
 	{deps} = server
 
+	grab_for_client = (client) ->
+		bag = {}
+
+		from_chunk_view = (chunk_view) ->
+			# for each all subscribed chunks
+			for k,s of chunk_view.chunks
+				if s?
+					deps.read s.chunk
+
+					# for each entities in the chunk
+					for k,v of s.chunk.entities
+						bag[k] = v
+
+		# should include myself
+		bag[client.avatar.id] = client.avatar
+
+		if client.chunk_view
+			from_chunk_view client.chunk_view, bag
+
+		bag
+
 	server.publish 'world', (client,old) ->		
 		# relys on client state
 		deps.read client
 
 		world = client.avatar?.world
-		chunk_view = client.chunk_view
-		return {} unless world and chunk_view?
+		return {} unless world
 
 		avatars = {}
 
-		visible_avatars = {}
-
-		# should include myself
-		visible_avatars[client.avatar.id] = client.avatar
-
-		# for each all subscribed chunks
-		for k,s of chunk_view.chunks
-			deps.read s?.chunk
-
-			# for each entities in the chunk
-			for k,v of s?.chunk.entities
-				visible_avatars[k] = v
-
+		visible_avatars = grab_for_client(client)
+		
 		# all visible avatars
 		for id,a of visible_avatars
 			o = old?.avatars?[id]
