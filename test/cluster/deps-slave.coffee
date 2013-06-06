@@ -1,6 +1,6 @@
 async = require 'async'
 {EventEmitter} = require 'events'
-ether = require '../../lib/ether'
+ether = require '../../src/server/ether'
 
 module.exports = () ->		
 	server = ether ['cluster','deps'], id:'mocha-slave'

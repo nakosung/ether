@@ -1,5 +1,5 @@
-deps = require '../lib/deps'
-ether = require '../lib/ether'
+deps = require '../src/server/deps'
+ether = require '../src/server/ether'
 {EventEmitter} = require 'events'
 _ = require 'underscore'
 async = require 'async'
@@ -7,7 +7,7 @@ cluster = require 'cluster'
 
 describe 'Deps', ->
 	describe 'standalone', ->
-		server = ether ['deps'], id:'mocha', dir:'../lib'	
+		server = ether ['deps'], id:'mocha', dir:'.'	
 		
 		X = server.deps
 
@@ -65,7 +65,7 @@ describe 'Deps', ->
 		X = null
 
 		before (done) ->			
-			server = ether ['cluster', 'deps'], id:'mocha', dir:'../lib'
+			server = ether ['cluster', 'deps'], id:'mocha', dir:'.'
 
 			(server.deps?).should.be.true
 			X = server.deps

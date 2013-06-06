@@ -1,4 +1,4 @@
-ether = require './lib/ether'
+ether = require './src/server/ether'
 _ = require 'underscore'
 async = require 'async'
 

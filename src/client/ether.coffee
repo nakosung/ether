@@ -1,5 +1,3 @@
-require './ether'
-
 ether = angular.module('ether',[])
 # main proxy
 ether.factory 'sockjs', ($rootScope) ->		

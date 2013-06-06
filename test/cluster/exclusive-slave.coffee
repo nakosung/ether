@@ -1,4 +1,4 @@
-exclusive = require '../../lib/exclusive'
+exclusive = require '../../src/server/exclusive'
 async = require 'async'
 cluster = require 'cluster'
 
