@@ -11,11 +11,6 @@ module.exports = (grunt) ->
 				tasks: ['shared']
 				options:
 					interrupt:yes
-			server:
-				files: 'src/server/*.coffee'
-				tasks: ['server']				
-				options:
-					interrupt:yes
 		coffee:
 			shared:
 				options:
@@ -35,15 +30,6 @@ module.exports = (grunt) ->
 				src:['client/*.coffee']
 				dest:'build/'
 				ext:'.js'
-			server:
-				options:
-					bare:yes
-					sourceMap:true
-				expand:true
-				cwd:'src'
-				src:['server/*.coffee']
-				dest:'build/'
-				ext:'.js'
 		shell:
 			browserify:
 				command: 'browserify -d build/client/app.js -o build/public/bundle.js'
@@ -53,18 +39,12 @@ module.exports = (grunt) ->
 					stderr:true
 					failOnError:true
 			run:
-				command: 'nodemon index.js'
+				command: 'nodemon src/server/main.coffee'
 				options:
 					stdout:true
 					stderr:true
 					failOnError:true
-					async:true
-			test : 
-				command: 'mocha --compilers coffee:coffee-script -r should -w'
-				options:
-					stdout:true
-					stderr:true
-					failOnError:true				
+					async:true		
 		uglify:
 			build:
 				src:'public/lib/bundle.js'
@@ -79,12 +59,12 @@ module.exports = (grunt) ->
 	grunt.loadNpmTasks 'grunt-mocha-test'
 	grunt.loadNpmTasks 'grunt-shell-spawn'
 		
-	grunt.registerTask 'client', ['coffee:client','shell:browserify']	
-	grunt.registerTask 'shared', ['coffee:shared','client']
+	grunt.registerTask 'client', ['coffee:client','zip']	
+	grunt.registerTask 'shared', ['coffee:shared','zip']
 	grunt.registerTask 'test', ['shell:test']
-	grunt.registerTask 'server', ['coffee:server']
+	grunt.registerTask 'zip', ['shell:browserify']
 	grunt.registerTask 'default', ['make','shell:run','watch']
-	grunt.registerTask 'make', ['shared','server','client']
+	grunt.registerTask 'make', ['coffee','zip']
 
 	# watching server folder
 	

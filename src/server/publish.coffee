@@ -42,10 +42,16 @@ module.exports = (server) ->
 					r = null
 
 					@watch.begin()
-					r = p.call null,@client,@snapshot,fin
+
+					async = p.length == 3
+					if async
+						p.call null,@client,@snapshot,fin
+					else
+						r = p.call null,@client,@snapshot
+
 					@watch.end()					
 
-					fin(null,r) if _.isObject(r)
+					fin(null,r) unless async
 				else if _.isObject p				
 					cb(null,p)
 				else				

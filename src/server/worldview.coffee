@@ -45,18 +45,12 @@ module.exports = (server) ->
 			r = null
 
 			# if is updated or newly shown?
-			if o?.age != a.age or not o?
+			if not o? or o.age != a.age 
 				r = a.snapshot(client)
 			# if is upto-date
-			else if o?.age == a.age
+			else 
 				r = age:a.age
-			# otherwise, skip it
-			else
-				return	
-
-			# if we are owning it, mark it!
-			r.owned = true if (client.avatar == a)
-
+	
 			# save off
 			avatars[id] = r
 

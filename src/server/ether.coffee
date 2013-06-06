@@ -77,7 +77,8 @@ module.exports = (plugins,opts) ->
 
 		server
 
-	if opts.cluster		
+	if opts.cluster
+		cluster = require 'cluster'		
 		if cluster.isMaster
 			[1..4].map -> cluster.fork()
 			undefined

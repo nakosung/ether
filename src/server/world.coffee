@@ -133,6 +133,30 @@ module.exports = (server,opts) ->
 			
 		cb(null,TheWorld)
 
+	LivesInChunk = 
+		init : (cb) ->
+			@chunk = null
+			cb()
+		uninit : (cb) ->
+			@chunk.leave(@) if @chunk
+			@chunk = null
+			cb()
+		postTick : (cb) ->
+			async.waterfall [
+				(cb) => @map.get_chunk_abs @pos.x,@pos.y, cb
+				(chunk,cb) => 
+					@migrateTo chunk
+					cb()
+				(cb) =>
+					deps.write @chunk if @chunk
+			], cb
+		methods : 
+			migrateTo : (chunk) ->
+				return if chunk == @chunk 
+				@chunk.leave(@) if @chunk
+				@chunk = chunk
+				@chunk.join(@)		
+
 	class Avatar extends Entity
 		constructor : (@world,@client) ->			
 			super @world.map, client.auth, new Vector Math.floor(Math.random() * 100), Math.floor(Math.random() * 10)
@@ -233,16 +257,25 @@ module.exports = (server,opts) ->
 			@flying = snapshot.flying if snapshot.flying?
 
 		snapshot : (target) -> 
-			if target == @client								
+			# Rare case 1 : replicate to owner
+			if target == @client
 				if @corrected
 					@corrected = false
-					id:@id, pos:@pos, vel:@vel, age:@age, flying:@flying
+					id:@id, pos:@pos, vel:@vel, age:@age, flying:@flying, owned:true
 				else
-					id:@id, age:@age
+					id:@id, age:@age, owned:true
+			# Rare case 2 : serialize to db
 			else if target == 'db'
 				pos:@pos, vel:@vel, age:@age, flying:@flying
+			# Common case : replicate to anonymous
 			else
-				id:@id, pos:@pos, vel:@vel, age:@age, flying:@flying
+				# caching!
+				if @snapshot_cache?.age == @age
+					@snapshot_cache
+				else
+					r = id:@id, pos:@pos, vel:@vel, age:@age, flying:@flying
+					@snapshot_cache = r
+					r
 		
 		# pos : Object{x,y}
 		updateClientPos : (pos) ->
