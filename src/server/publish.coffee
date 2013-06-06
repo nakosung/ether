@@ -43,7 +43,7 @@ module.exports = (server) ->
 
 					@watch.begin()
 
-					async = p.length == 3
+					async = (p.length == 3)
 					if async
 						p.call null,@client,@snapshot,fin
 					else
