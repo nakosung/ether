@@ -1,5 +1,5 @@
 {
-  "name": "mmm",
+  "name": "ether",
   "dependencies": {
     "mongojs": "~0.7.5",
     "async": "~0.2.8",
@@ -35,5 +35,9 @@
   },
   "scripts": {
     "test": "mocha"
+  },
+  "repository": {
+    "type" : "git",
+    "url" : "https://github.com/nakosung/ether"
   }
 }

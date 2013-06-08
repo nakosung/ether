@@ -58,11 +58,14 @@ module.exports = (grunt) ->
 	grunt.loadNpmTasks 'grunt-contrib-uglify'
 	grunt.loadNpmTasks 'grunt-mocha-test'
 	grunt.loadNpmTasks 'grunt-shell-spawn'
+
+	grunt.registerTask 'mkdir_build', ->
+		grunt.file.mkdir 'build/public'
 		
 	grunt.registerTask 'client', ['coffee:client','zip']	
 	grunt.registerTask 'shared', ['coffee:shared','zip']
 	grunt.registerTask 'test', ['shell:test']
-	grunt.registerTask 'zip', ['shell:browserify']
+	grunt.registerTask 'zip', ['mkdir_build','shell:browserify']
 	grunt.registerTask 'default', ['make','shell:run','watch']
 	grunt.registerTask 'make', ['coffee','zip']
 

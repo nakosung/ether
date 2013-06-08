@@ -1,4 +1,4 @@
-# Ether.js 0.0.0
+# Ether.js 0.0.0 [<img src="https://secure.travis-ci.org/nakosung/ether.png"/>](http://travis-ci.org/nakosung/ether)
 
 Ether.js aims to be an alternative to Meteor, which doesn't share design principles with node.js.
 

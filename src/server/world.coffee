@@ -133,30 +133,6 @@ module.exports = (server,opts) ->
 			
 		cb(null,TheWorld)
 
-	LivesInChunk = 
-		init : (cb) ->
-			@chunk = null
-			cb()
-		uninit : (cb) ->
-			@chunk.leave(@) if @chunk
-			@chunk = null
-			cb()
-		postTick : (cb) ->
-			async.waterfall [
-				(cb) => @map.get_chunk_abs @pos.x,@pos.y, cb
-				(chunk,cb) => 
-					@migrateTo chunk
-					cb()
-				(cb) =>
-					deps.write @chunk if @chunk
-			], cb
-		methods : 
-			migrateTo : (chunk) ->
-				return if chunk == @chunk 
-				@chunk.leave(@) if @chunk
-				@chunk = chunk
-				@chunk.join(@)		
-
 	class Avatar extends Entity
 		constructor : (@world,@client) ->			
 			super @world.map, client.auth, new Vector Math.floor(Math.random() * 100), Math.floor(Math.random() * 10)
