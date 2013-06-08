@@ -2,7 +2,7 @@ ether = require './src/server/ether'
 _ = require 'underscore'
 async = require 'async'
 
-plugins = 'coffee-script express cluster mongodb rpc stats accounts'.split(' ')	
+plugins = 'express cluster mongodb rpc stats accounts'.split(' ')	
 opts = 
 	express : 
 		port : 3338
