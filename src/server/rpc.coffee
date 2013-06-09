@@ -31,13 +31,19 @@ module.exports = (server) ->
 
 		client.rpc = {}
 
-		walk = (rpc,prefix='',parent=[]) ->
+		walk = (rpc,prefix='',parent=[],context=null) ->
 			for k,v of rpc
 				if is_permitted(client,v)
-					if _.isFunction(v) and k != '__check__' 
-						client.rpc[prefix+k] = fn:v,v:[parent...,v]
+					if _.isFunction(v) 
+						if k == '__expand__'
+							result = v.call(rpc,client)
+							walk result, prefix, parent, context
+						else if k != '__check__' 
+							client.rpc[prefix+k] = fn:v,v:[parent...,v],context:context
 					else if _.isObject(v)
-						walk(v,prefix+k+":",[parent...,v])
+						unless v.constructor == Object
+							context = v
+						walk(v,prefix+k+":",[parent...,v],context)
 
 		walk(rpc)
 
@@ -68,7 +74,7 @@ module.exports = (server) ->
 					flags = rr.v.map (fn) -> is_permitted client, fn
 					if _.all flags					
 						try
-							rr.fn.call rpc, client,args...,cb				
+							rr.fn.call rr.context or rpc, client,args...,cb				
 						catch e
 							if e instanceof ReferenceError or e instanceof TypeError
 								throw e

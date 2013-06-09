@@ -1,3 +1,5 @@
+_ = require 'underscore'
+
 module.exports = (server) ->
 	server.use 'rpc'
 
@@ -31,11 +33,78 @@ module.exports = (server) ->
 	# TISSUE - CELL
 	# A node process can host multiple cells.
 
-	class Cell
-		constructor : ->
-			@server = null
+	# Final interface
+	# ---------------
+	# rpc.cell.commands(client,cell,xxxx,cb)
+	# publish 'cell', (client,id)
+	# 
+	# muxed version of pub/sub would be great for clients
+	# to support this, pub/sub relationship is set between servers.
 
-	class Consumer
-		constructor : ->
-			@cells = {}
+	# Cell interface will be reflected into rpc interface automatically.
+	# The cell interface is actual service interface.
+
+	# Sequence
+	# subscribe service
+	# rpc.cell.open
+	# rpc.cell.xxx.
+
+	{rpc,deps} = server
+
+	Cells = {}
+
+	class CellInstance
+		constructor : (@cell) ->
+
+		hello : (client,msg,cb) ->
+			console.log 'cell instance says hello', msg
+			cb()	
+
+	class CellClient
+		constructor : (@instance,cell) ->
+			@cell = cell
+			@clients = {}
+
+			@create_interface()
+
+		destroy : ->
+
+		create_interface : ->
+			@interface = 
+				close : (client,cb) =>
+					@leave(client,cb)
+			_.keys(@instance.prototype).forEach (method) =>
+				@interface[method] = (args...) =>
+					@invoke method, args...
+
+		join : (client,cb) ->
+			return cb('already open') if @clients[client.id] >= 0
+
+			@clients[client.id] = true
+			client.cells ?= {}
+			client.cells[@cell] = @interface
+			console.log client.cells
+			deps.write client
+			cb()
+
+		invoke : (method,args...,cb) ->
+			cb('not available')
+
+		leave : (client,cb) ->
+			return cb('closed') unless client.cells[@cell]
+
+			delete client.cells[@cell]
+			delete @clients[client.id]
+			deps.write client
+			cb()
+
+	
+	rpc.cell =
+		open : (client,cell,cb) ->
+			Cells[cell] ?= new CellClient CellInstance, cell
+			Cells[cell].join(client,cb)
+
+		__expand__ : (client) ->
+			client.cells
+
 

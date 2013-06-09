@@ -30,6 +30,7 @@ server?.use 'friends'
 server?.use 'matchmaking'
 server?.use 'shop'
 server?.use 'world'
+server?.use 'cell'
 
 if server
 	{db,rpc,deps} = server
