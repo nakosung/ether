@@ -19,7 +19,8 @@
     "source-map-support": "~0.1.5",
     "coffeeify": "~0.4.1",
     "passport": "~0.1.17",
-    "passport-local": "~0.1.6"
+    "passport-local": "~0.1.6",
+    "coveralls": "~2.0.13"
   },
   "devDependencies": {
     "grunt": "~0.4.1",
@@ -37,7 +38,7 @@
     "test": "mocha"
   },
   "repository": {
-    "type" : "git",
-    "url" : "https://github.com/nakosung/ether"
+    "type": "git",
+    "url": "https://github.com/nakosung/ether"
   }
 }
