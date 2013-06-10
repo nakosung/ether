@@ -374,7 +374,7 @@ module.exports = (server) ->
 		create_interface : ->
 			@interface = 
 				close : (client,cb) => @leave client, cb
-					
+
 			_.keys(@config.user_class.prototype).forEach (method) =>				
 				return if ['constructor','destroy','init','client','init_client','uninit_client'].indexOf(method) >= 0
 
@@ -385,15 +385,15 @@ module.exports = (server) ->
 			return cb('already open') if @clients.indexOf(client) >= 0
 
 			@clients.push client
-			
+
 			@config.user_class::init_client client, @cell, @interface
 
-			client.once 'close', => @leave client, =>						
+			client.once 'close', => @leave client, =>
 
 			unless @active
 				@activate(cb)
 			else
-				cb()					
+				cb()
 
 		leave : (client,cb) ->
 			i = @clients.indexOf(client)
@@ -402,12 +402,12 @@ module.exports = (server) ->
 			@config.user_class::uninit_client client, @cell
 
 			@clients.splice i,1			
-			
+
 			if @clients.length == 0
 				console.log 'all clients left from cell client'
 				@deactivate(cb)
-			else				
-				cb()				
+			else
+				cb()
 
 	configify = (config) ->
 		o = _.extend {}, config
