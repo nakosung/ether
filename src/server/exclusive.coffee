@@ -9,7 +9,7 @@
 #			B.take 'x', fn2, 'a', 'b', cb ==> fn is called with ['a','b']
 #		user-fn can reject by error-back.
 #	
-#		* IMPORTANT * user-fn can deny ['TIMEOUT']
+#		* IMPORTANT * user-fn can *NOT* deny ['TIMEOUT']
 #
 #	destroy : (token,args...,callback)
 #		In case of just wanting mutex to be off, we can call destroy instead of take. :)
@@ -67,6 +67,21 @@ class Exclusive
 		#process.on 'exit', =>
 			#console.log "EXITEXITEXITEXITEXIT".red.bold
 
+	read : (token,cb) ->
+		key = 'xc:' + token
+		async.waterfall [
+			(cb) => @pub.get key, cb,
+			(result,cb) =>
+				if result
+					[id,args...] = result.split(':')
+					r = 
+						id:id
+						args:args
+					cb(null,r)
+				else
+					cb()
+		], cb
+		
 	take : (token,fn,args...,cb) ->
 		throw new Error('cb!') unless _.isFunction(cb)
 		throw new Error('token should be not null') unless token

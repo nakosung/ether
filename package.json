@@ -20,7 +20,8 @@
     "coffeeify": "~0.4.1",
     "passport": "~0.1.17",
     "passport-local": "~0.1.6",
-    "coveralls": "~2.0.13"
+    "coveralls": "~2.0.13",
+    "carrier": "~0.1.10"
   },
   "devDependencies": {
     "grunt": "~0.4.1",

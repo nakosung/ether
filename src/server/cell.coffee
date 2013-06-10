@@ -1,8 +1,10 @@
 _ = require 'underscore'
+net = require 'net'
+async = require 'async'
+events = require 'events'
+carrier = require 'carrier'
 
 module.exports = (server) ->
-	server.use 'rpc'
-
 	# cell can be a room in chat service, a zone in mmorpg world, and so on.
 	# cell should be contained in one thread which is running on one node app.
 	# this will eliminate all kinds of dirties related with concurrency.
@@ -49,62 +51,352 @@ module.exports = (server) ->
 	# rpc.cell.open
 	# rpc.cell.xxx.
 
-	{rpc,deps} = server
+	server.use 'deps'
+	server.use 'rpc'
+	server.use 'redis'
+	server.use 'token'
 
-	Cells = {}
+	{rpc,deps,redis} = server	
+	{sub,pub} = redis
 
-	class CellInstance
-		constructor : (@cell) ->
+	class TissueServer extends events.EventEmitter
+		constructor : (@config) ->
+			@cells = {}
 
-		hello : (client,msg,cb) ->
-			console.log 'cell instance says hello', msg
+		ready_to_serve : ->
+			@has_enough_capacity_to_serve_more() and not @is_shutting_down
+
+		# TODO : important piece for load balancing
+		has_enough_capacity_to_serve_more : ->
+			true
+
+		shutdown : (cb) ->
+			@is_shutting_down = true
+
+			# release all cells
+			for k, v of @cells
+				@release_cell v
+
+			fn = =>
+				if _.keys(@cells).length == 0
+					cb()
+
+			@on 'close-cell', fn
+
+		init_redis : (cb) ->
+			sub.on 'message', (channel, message) =>
+				if channel == @config.id('sub')
+					cell = message
+
+					fn = (taker,cb) =>
+						console.log 'take!!!', taker
+						return cb('no way') unless taker == "TIMEOUT" or not taker? # null taker is DESTROYER!
+
+						cell_server = @cells[cell]
+						if cell_server
+							@clear_swapout cell_server
+							delete @cells[cell]
+							cell_server.destroy(cb)
+							@emit 'close-cell', cell
+						else
+							cb()					
+
+					cell_server = @cells[cell]
+					unless cell_server
+						if @ready_to_serve()
+							token = @config.id(cell)
+							console.log 'server request'.bold.red, token
+							async.series [
+								(cb) => server.acquireToken server.id, token, fn, cb
+								(cb) => @init_cell(cell,cb)
+							], -> 
+					else
+						@add_client(cell_server)						
+
+				if channel == @config.id('unsub')
+					cell = message
+
+					cell_server = @cells[cell]
+					if cell_server
+						cell_server.clients--
+
+						if cell_server.clients == 0
+							@swapout cell_server
+
+				sub.subscribe @config.id('sub')
+				sub.subscribe @config.id('unsub')
+			cb()
+
+		init_cell : (cell,cb) ->
+			cell_server = @cells[cell] = new @config.user_class(cell)
+			cell_server.clients = 1
+			async.series [
+				(cb) => cell_server.init cb
+				(cb) => 
+					console.log "cell #{cell} running at #{JSON.stringify @endpoint}"
+					pub.publish @config.id('open'), JSON.stringify {cell:cell,endpoint:@endpoint}
+			], cb
+
+		add_client : (cell_server) ->
+			cell_server.clients++
+			@clear_swapout(cell_server)			
+
+		clear_swapout : (cell_server) ->
+			if cell_server.swappingout
+				clearTimeout(cell_server.swappingout)
+				cell_server.swappingout = null
+
+		release_cell : (cell_server) ->
+			server.destroyToken @config.id(cell_server.cell), =>
+				console.log 'released', @cells
+
+		swapout : (cell_server) ->
+			return if cell_server.swappingout
+			fnSwapout = =>
+				cell_server.swappingout = null				
+				@release_cell(cell_server)
+			cell_server.swappingout = setTimeout fnSwapout, @config.swapout_delay
+
+		init : (cb) ->			
+			async.series [
+				(cb) => @init_net cb
+				(cb) => @init_redis cb
+			], cb	
+
+		init_net : (cb) ->			
+			handler = (c) =>
+				console.log 'client connected'
+				c.once 'end', ->
+					console.log 'client disconnected'
+				my_carrier = carrier.carry(c)
+				my_carrier.on 'line', (data) =>
+					[cell,trid,method,args...] = JSON.parse(data)
+					cb = (r...) ->
+						c.write JSON.stringify [trid,r...]
+						c.write "\r\n"
+
+					cell_server = @cells[cell]					
+					unless cell_server
+						cb('no such cell here')
+					else 
+						unless cell_server[method]
+							cb('no such method')
+						else
+							cell_server[method].call cell_server, args..., cb
+
+			@net = net.createServer handler		
+			@endpoint = port:8124			
+
+			attemptListen = () =>
+				@net.listen @endpoint.port
+				@net.on 'error', (e) =>	
+					if e.code == "EADDRINUSE"
+						@endpoint.port++
+						attemptListen() 					
+			attemptListen()				
 			cb()	
 
-	class CellClient
-		constructor : (@instance,cell) ->
-			@cell = cell
-			@clients = {}
+	class TissueClient
+		constructor : (@config) ->
+			@connections = {}	
+			@cells = {}
 
-			@create_interface()
+			endpoint_to_key = (endpoint) -> JSON.stringify endpoint
+
+			sub.on 'message', (channel,message) =>
+				if channel == @config.id('open')
+					{cell,endpoint} = JSON.parse(message)
+					client = @cells[cell]
+
+					if client
+						key = endpoint_to_key(endpoint)
+						connection = @connections[key]
+
+						unless connection
+							connection = @connections[key] = new Connection endpoint
+							connection.once 'close', =>
+								delete @connections[key]
+							connection.connect ->
+
+						connection.join client
+
+				if channel == @config.id('close')
+					{cell,endpoint} = JSON.parse(message)
+					client = @cells[cell]
+
+					if client
+						key = endpoint_to_key(endpoint)
+						connection = @connections[key]
+
+						if connection
+							connection.leave client
+
+
+			sub.subscribe @config.id('open')
+
+		cell : (cell) ->
+			@cells[cell] ?= new CellClient @config, cell
+
+	class Connection extends events.EventEmitter
+		constructor : (@endpoint) ->
+			@trid = 0
+			@trs = {}
+			@clients = []						
+
+		join : (client) ->
+			return if @clients.indexOf(client) >= 0
+
+			client.connection = @
+
+			@clients.push client
+
+			if @net
+				client.init_net()
+
+		leave : (client) ->
+			i = @clients.indexOf(client)
+			return if i < 0
+
+			client.connection = null
+
+			@clients.splice i, 1
+
+		connect : (cb) ->
+			return cb('connected') if @net
+
+			async.series [				
+				(cb) => 
+					@net = net.connect @endpoint, cb
+				(cb) => 	
+					my_carrier = carrier.carry(@net)				
+					my_carrier.on 'line', (data) =>
+						# if destroyed?
+						return unless @net
+
+						[trid,result...] = JSON.parse(data)
+						fn = @trs[trid]
+						delete @trs[trid]
+						fn?.apply null,result
+
+					@net.once 'end', =>
+						@destroy()
+
+					@clients.forEach (c) -> c.init_net()					
+
+					cb()
+			], cb
+
+		purgeAllTransactions : ->
+			trs = @trs
+			@trs = {}
+			for k,v of trs
+				v('disconnected')
 
 		destroy : ->
+			@purgeAllTransactions()
+
+			@clients.forEach (client) =>
+				@leave client
+
+			if @net
+				@net.end()
+				@net = null		
+
+			@emit 'close'
+
+		invoke : (cell,method,args...,cb) ->
+			return cb('cell network not available') unless @net
+
+			trid = @trid++
+			packet = [cell,trid,method,args...]
+			@trs[trid] = cb			
+			
+			@net.write JSON.stringify(packet)
+			@net.write "\r\n"
+
+	class CellClient
+		constructor : (@config,cell) ->
+			@cell = cell
+			@clients = []						
+
+			@create_interface()			
+		
+		destroy : (cb) ->
+			jobs = @clients.map (c) => (cb) => @leave(c,cb)
+			
+			async.series [
+				(cb) => async.parallel jobs, cb
+				(cb) => 
+					if @connection
+						@connection.leave(@)
+					cb()
+			], cb
 
 		create_interface : ->
 			@interface = 
-				close : (client,cb) =>
-					@leave(client,cb)
-			_.keys(@instance.prototype).forEach (method) =>
-				@interface[method] = (args...) =>
-					@invoke method, args...
+				close : (client,cb) => @leave client, cb
+					
+			_.keys(@config.user_class.prototype).forEach (method) =>				
+				return if ['constructor','destroy','init','client','init_client','uninit_client'].indexOf(method) >= 0
+
+				@interface[method] = (client,args...) =>
+					@invoke method, @config.user_class::client(client), args...		
+
+		invoke : (method,args...,cb) ->			
+			return cb('cell provider not available') unless @connection
+
+			@connection.invoke @cell, method, args..., cb
+
+		init_net : ->
+			# called when network become up-and-running
 
 		join : (client,cb) ->
-			return cb('already open') if @clients[client.id] >= 0
+			return cb('already open') if @clients.indexOf(client) >= 0
 
-			@clients[client.id] = true
-			client.cells ?= {}
-			client.cells[@cell] = @interface
-			console.log client.cells
-			deps.write client
-			cb()
+			@clients.push client
+			
+			@config.user_class::init_client client, @cell, @interface
 
-		invoke : (method,args...,cb) ->
-			cb('not available')
+			client.once 'close', => @leave client, =>						
+
+			if @clients.length == 1				
+				async.parallel [
+					(cb) => pub.sadd @config.id(@cell,'subs'), server.id, cb
+					(cb) => pub.publish @config.id('sub'), @cell, cb
+				], cb
+			else
+				cb()					
 
 		leave : (client,cb) ->
-			return cb('closed') unless client.cells[@cell]
+			i = @clients.indexOf(client)
+			return cb('closed') unless i >= 0
 
-			delete client.cells[@cell]
-			delete @clients[client.id]
-			deps.write client
-			cb()
+			@user_class::uninit_client client, @cell
+
+			@clients.splice i,1			
+			
+			if @clients.length == 0
+				console.log 'all clients left from cell client'
+				async.parallel [
+					(cb) => pub.srem @config.id(@cell,'subs'), server.id, cb
+					(cb) => pub.publish @config.id('unsub'), @cell, cb
+				], cb
+			else				
+				cb()				
+
+	configify = (config) ->
+		o = _.extend {}, config
+		o.id = (x...) ->
+			[config.name,x...].join(':')
+		o
+
+	server.cell = 
+		server : (config,cb) ->
+			config = configify config
+			config.swapout_delay ?= 5000 # default 5 sec
+			tissue = new TissueServer config
+			tissue.init cb
+		client : (config) ->
+			new TissueClient configify config
 
 	
-	rpc.cell =
-		open : (client,cell,cb) ->
-			Cells[cell] ?= new CellClient CellInstance, cell
-			Cells[cell].join(client,cb)
-
-		__expand__ : (client) ->
-			client.cells
-
-

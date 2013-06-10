@@ -66,7 +66,10 @@ module.exports = (server) ->
 						if r.length and r[0]
 							client.send error:String(r[0])
 						else
-							client.send log:"OK"
+							r = r.splice(1)
+							if r.length == 0 
+								r = "OK"
+							client.send log: r
 				
 				rr = client.rpc?[k]
 

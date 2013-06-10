@@ -15,6 +15,9 @@ module.exports = (server) ->
 				fn(taker[0],cb)
 		exclusive.take k,fn2,who,cb
 
+	server.readToken = (k,cb) ->
+		exclusive.read k.cb
+
 	server.destroyToken = (k,cb) ->
 		return cb() unless k
 

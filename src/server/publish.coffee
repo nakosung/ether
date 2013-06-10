@@ -43,7 +43,8 @@ module.exports = (server) ->
 
 					@watch.begin()
 
-					async = (p.length == 3)
+					arity = p.length
+					async = (arity == 3)
 					if async
 						p.call null,@client,@snapshot,fin
 					else
@@ -101,6 +102,9 @@ module.exports = (server) ->
 		s.update = -> update pub
 		pubs[pub] = s
 		s.update
+
+	server.unpublish = @unpublish = (pub) ->
+		delete pubs[pub]
 
 	class Client
 		constructor : (@client) ->			
