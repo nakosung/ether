@@ -57,7 +57,7 @@ module.exports = (server) ->
 	server.use 'token'
 
 	{rpc,deps,redis} = server	
-	{sub,pub} = redis
+	{sub,pub} = redis	
 
 	class TissueServer extends events.EventEmitter
 		constructor : (@config) ->
@@ -132,9 +132,7 @@ module.exports = (server) ->
 			cell_server.clients = 1
 			async.series [
 				(cb) => cell_server.init cb
-				(cb) => 
-					console.log "cell #{cell} running at #{JSON.stringify @endpoint}"
-					pub.publish @config.id('open'), JSON.stringify {cell:cell,endpoint:@endpoint}
+				(cb) => pub.publish @config.id('open'), JSON.stringify {cell:cell,endpoint:@endpoint}
 			], cb
 
 		add_client : (cell_server) ->
@@ -142,9 +140,8 @@ module.exports = (server) ->
 			@clear_swapout(cell_server)			
 
 		clear_swapout : (cell_server) ->
-			if cell_server.swappingout
-				clearTimeout(cell_server.swappingout)
-				cell_server.swappingout = null
+			cell_server.swappingout?()
+			cell_server.swappingout = null
 
 		release_cell : (cell_server) ->
 			server.destroyToken @config.id(cell_server.cell), =>
@@ -155,7 +152,9 @@ module.exports = (server) ->
 			fnSwapout = =>
 				cell_server.swappingout = null				
 				@release_cell(cell_server)
-			cell_server.swappingout = setTimeout fnSwapout, @config.swapout_delay
+			timeout = setTimeout fnSwapout, @config.swapout_delay
+			cell_server.swappingout = ->
+				clearTimeout timeout
 
 		init : (cb) ->			
 			async.series [
@@ -235,7 +234,7 @@ module.exports = (server) ->
 			sub.subscribe @config.id('open')
 
 		cell : (cell) ->
-			@cells[cell] ?= new CellClient @config, cell
+			@cells[cell] ?= new CellClientEx @config, cell
 
 	class Connection extends events.EventEmitter
 		constructor : (@endpoint) ->
@@ -316,20 +315,60 @@ module.exports = (server) ->
 
 	class CellClient
 		constructor : (@config,cell) ->
-			@cell = cell
+			@cell = cell					
+			@active = false
+
+		destroy : (cb) ->
+			async.series [
+				(cb) => 
+					if @active
+						@deactivate cb
+					else
+						cb()
+				(cb) =>
+					if @connection
+						@connection.leave(@)
+					cb()				
+			], cb
+
+		invoke : (method,args...,cb) ->			
+			return cb('cell provider not available') unless @connection
+
+			@connection.invoke @cell, method, args..., cb
+
+		init_net : ->
+			# called when network become up-and-running
+
+		activate : (cb) ->
+			return cb('invalid') if @active
+			@active = true
+			async.parallel [
+				(cb) => pub.sadd @config.id(@cell,'subs'), server.id, cb
+				(cb) => pub.publish @config.id('sub'), @cell, cb
+			], cb
+
+		deactivate : (cb) ->
+			return cb('invalid') unless @active
+			@active = false
+			async.parallel [
+				(cb) => pub.srem @config.id(@cell,'subs'), server.id, cb
+				(cb) => pub.publish @config.id('unsub'), @cell, cb
+			], cb
+
+	class CellClientEx extends CellClient
+		constructor : (@config,cell) ->
+			super @config, cell
+
 			@clients = []						
 
-			@create_interface()			
+			@create_interface()	
 		
 		destroy : (cb) ->
 			jobs = @clients.map (c) => (cb) => @leave(c,cb)
 			
 			async.series [
 				(cb) => async.parallel jobs, cb
-				(cb) => 
-					if @connection
-						@connection.leave(@)
-					cb()
+				(cb) => super cb
 			], cb
 
 		create_interface : ->
@@ -340,15 +379,7 @@ module.exports = (server) ->
 				return if ['constructor','destroy','init','client','init_client','uninit_client'].indexOf(method) >= 0
 
 				@interface[method] = (client,args...) =>
-					@invoke method, @config.user_class::client(client), args...		
-
-		invoke : (method,args...,cb) ->			
-			return cb('cell provider not available') unless @connection
-
-			@connection.invoke @cell, method, args..., cb
-
-		init_net : ->
-			# called when network become up-and-running
+					@invoke method, @config.user_class::client(client), args...				
 
 		join : (client,cb) ->
 			return cb('already open') if @clients.indexOf(client) >= 0
@@ -359,11 +390,8 @@ module.exports = (server) ->
 
 			client.once 'close', => @leave client, =>						
 
-			if @clients.length == 1				
-				async.parallel [
-					(cb) => pub.sadd @config.id(@cell,'subs'), server.id, cb
-					(cb) => pub.publish @config.id('sub'), @cell, cb
-				], cb
+			unless @active
+				@activate(cb)
 			else
 				cb()					
 
@@ -371,16 +399,13 @@ module.exports = (server) ->
 			i = @clients.indexOf(client)
 			return cb('closed') unless i >= 0
 
-			@user_class::uninit_client client, @cell
+			@config.user_class::uninit_client client, @cell
 
 			@clients.splice i,1			
 			
 			if @clients.length == 0
 				console.log 'all clients left from cell client'
-				async.parallel [
-					(cb) => pub.srem @config.id(@cell,'subs'), server.id, cb
-					(cb) => pub.publish @config.id('unsub'), @cell, cb
-				], cb
+				@deactivate(cb)
 			else				
 				cb()				
 

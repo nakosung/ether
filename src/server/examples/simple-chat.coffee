@@ -5,6 +5,7 @@ module.exports = (server) ->
 
 	{cell,deps,rpc} = server
 
+	# A stateful single threaded server logic
 	class CellInstance 
 		constructor : (@cell) ->
 			@users = {}
@@ -30,6 +31,10 @@ module.exports = (server) ->
 			console.log 'chat room closed', @cell
 			cb()
 
+		enqueue : (who,what...) ->
+			@text.push [who,what...]
+			@invalidate()
+
 		invalidate : ->
 			for k,v of @users
 				if v.longpoll
@@ -43,24 +48,25 @@ module.exports = (server) ->
 			@users[client] = 
 				cursor : 0
 				longpoll : null
-			@text.push [client,"joined"]
-			@invalidate()
+
+			@enqueue client,"joined"						
 			cb()
 
 		leave : (client,cb) ->			
 			return cb('not joined') unless @users[client]			
 
-			@text.push [client,"left"]
-			@invalidate()
+			@enqueue client,"left"
+			
 			@users[client].longpoll?()
 			delete @users[client]
+
 			cb()
 
 		chat : (client,msg,cb) ->
 			return cb('invalid user') unless @users[client]
 
-			@text.push [client, msg]
-			@invalidate()
+			@enqueue client, msg
+			
 			cb()		
 
 		# long polling
@@ -68,16 +74,19 @@ module.exports = (server) ->
 			return cb('invalid user') unless @users[client]
 
 			if @users[client].cursor == @text.length
+				return cb('only one longpoll') if @users[client].longpoll 
+				
 				@users[client].longpoll = cb
-			else
-				buffer = @text.slice(@users[client].cursor)								
-				@users[client].cursor = @text.length
+			else				
+				v = @users[client]
+				buffer = @text.slice(v.cursor)								
+				v.cursor = @text.length
 				cb null, buffer
 	
 	config = 
 		name : 'chat'
 		user_class : CellInstance
-	
+
 	cell.server config, ->
 		console.log 'simple-chat'.bold
 
