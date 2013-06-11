@@ -36,9 +36,10 @@ module.exports = (server) ->
 		user_class : CellInstance
 
 	cell.server config, ->
-		console.log 'simple-cell'.bold
+		console.log 'simple-cell server'.bold
 
-	cell_client = cell.client config
+	cell_client = cell.client config, ->
+		console.log 'simple-cell client'.bold
 	
 	rpc.cell =
 		open : (client,cell,cb) ->			

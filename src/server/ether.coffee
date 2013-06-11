@@ -40,14 +40,15 @@ class Server extends events.EventEmitter
 			sendraw : (raw) => client.sendraw raw for client in @clients
 			send : (data) => client.send data for client in @clients
 	
-	use : (plugin,opt) ->	
+	use : (plugin,opt) ->
 		if _.isString plugin
 			@use (require @dir + '/' + plugin), opt
-		else		
-			unless _.contains @plugins, plugin				
+		else
+			unless _.contains @plugins, plugin
 				@plugins.push plugin
 				r = plugin.call(@,@,opt)
 				@inits.push r.init if _.isFunction(r?.init)
+				r
 
 	initialize : (cb) ->				
 		async.series @inits, cb	
@@ -66,14 +67,6 @@ module.exports = (plugins,opts) ->
 	main = (plugins,opts) ->		
 		server = new Server	opts
 		plugins.map (x) -> server.use x, opts?[x]
-
-		# process.on 'SIGUSR2', ->
-		# 	server.exit ->
-		# 		process.kill process.pid, 'SIGUSR2'
-
-		process.on 'SIGINT', ->
-			server.exit ->
-				process.exit()
 
 		server
 

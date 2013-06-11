@@ -88,9 +88,10 @@ module.exports = (server) ->
 		user_class : CellInstance
 
 	cell.server config, ->
-		console.log 'simple-chat'.bold
+		console.log 'simple-chat server'.bold
 
-	cell_client = cell.client config
+	cell_client = cell.client config, ->
+		console.log 'simple-chat client'.bold
 	
 	rpc.chat =
 		open : (client,cell,cb) ->			

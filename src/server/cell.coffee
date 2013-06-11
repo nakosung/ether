@@ -1,8 +1,6 @@
 _ = require 'underscore'
-net = require 'net'
 async = require 'async'
 events = require 'events'
-carrier = require 'carrier'
 
 module.exports = (server) ->
 	# cell can be a room in chat service, a zone in mmorpg world, and so on.
@@ -50,272 +48,12 @@ module.exports = (server) ->
 	# subscribe service
 	# rpc.cell.open
 	# rpc.cell.xxx.
-
-	server.use 'deps'
-	server.use 'rpc'
-	server.use 'redis'
-	server.use 'token'
-
-	{rpc,deps,redis} = server	
-	{sub,pub} = redis	
-
-	class TissueServer extends events.EventEmitter
-		constructor : (@config) ->
-			@cells = {}
-
-		ready_to_serve : ->
-			@has_enough_capacity_to_serve_more() and not @is_shutting_down
-
-		# TODO : important piece for load balancing
-		has_enough_capacity_to_serve_more : ->
-			true
-
-		shutdown : (cb) ->
-			@is_shutting_down = true
-
-			# release all cells
-			for k, v of @cells
-				@release_cell v
-
-			fn = =>
-				if _.keys(@cells).length == 0
-					cb()
-
-			@on 'close-cell', fn
-
-		init_redis : (cb) ->
-			sub.on 'message', (channel, message) =>
-				if channel == @config.id('sub')
-					cell = message
-
-					fn = (taker,cb) =>
-						console.log 'take!!!', taker
-						return cb('no way') unless taker == "TIMEOUT" or not taker? # null taker is DESTROYER!
-
-						cell_server = @cells[cell]
-						if cell_server
-							@clear_swapout cell_server
-							delete @cells[cell]
-							cell_server.destroy(cb)
-							@emit 'close-cell', cell
-						else
-							cb()					
-
-					cell_server = @cells[cell]
-					unless cell_server
-						if @ready_to_serve()
-							token = @config.id(cell)
-							console.log 'server request'.bold.red, token
-							async.series [
-								(cb) => server.acquireToken server.id, token, fn, cb
-								(cb) => @init_cell(cell,cb)
-							], -> 
-					else
-						@add_client(cell_server)						
-
-				if channel == @config.id('unsub')
-					cell = message
-
-					cell_server = @cells[cell]
-					if cell_server
-						cell_server.clients--
-
-						if cell_server.clients == 0
-							@swapout cell_server
-
-				sub.subscribe @config.id('sub')
-				sub.subscribe @config.id('unsub')
-			cb()
-
-		init_cell : (cell,cb) ->
-			cell_server = @cells[cell] = new @config.user_class(cell)
-			cell_server.clients = 1
-			async.series [
-				(cb) => cell_server.init cb
-				(cb) => pub.publish @config.id('open'), JSON.stringify {cell:cell,endpoint:@endpoint}
-			], cb
-
-		add_client : (cell_server) ->
-			cell_server.clients++
-			@clear_swapout(cell_server)			
-
-		clear_swapout : (cell_server) ->
-			cell_server.swappingout?()
-			cell_server.swappingout = null
-
-		release_cell : (cell_server) ->
-			server.destroyToken @config.id(cell_server.cell), =>
-				console.log 'released', @cells
-
-		swapout : (cell_server) ->
-			return if cell_server.swappingout
-			fnSwapout = =>
-				cell_server.swappingout = null				
-				@release_cell(cell_server)
-			timeout = setTimeout fnSwapout, @config.swapout_delay
-			cell_server.swappingout = ->
-				clearTimeout timeout
-
-		init : (cb) ->			
-			async.series [
-				(cb) => @init_net cb
-				(cb) => @init_redis cb
-			], cb	
-
-		init_net : (cb) ->			
-			handler = (c) =>
-				console.log 'client connected'
-				c.once 'end', ->
-					console.log 'client disconnected'
-				my_carrier = carrier.carry(c)
-				my_carrier.on 'line', (data) =>
-					[cell,trid,method,args...] = JSON.parse(data)
-					cb = (r...) ->
-						c.write JSON.stringify [trid,r...]
-						c.write "\r\n"
-
-					cell_server = @cells[cell]					
-					unless cell_server
-						cb('no such cell here')
-					else 
-						unless cell_server[method]
-							cb('no such method')
-						else
-							cell_server[method].call cell_server, args..., cb
-
-			@net = net.createServer handler		
-			@endpoint = port:8124			
-
-			attemptListen = () =>
-				@net.listen @endpoint.port
-				@net.on 'error', (e) =>	
-					if e.code == "EADDRINUSE"
-						@endpoint.port++
-						attemptListen() 					
-			attemptListen()				
-			cb()	
-
-	class TissueClient
-		constructor : (@config) ->
-			@connections = {}	
-			@cells = {}
-
-			endpoint_to_key = (endpoint) -> JSON.stringify endpoint
-
-			sub.on 'message', (channel,message) =>
-				if channel == @config.id('open')
-					{cell,endpoint} = JSON.parse(message)
-					client = @cells[cell]
-
-					if client
-						key = endpoint_to_key(endpoint)
-						connection = @connections[key]
-
-						unless connection
-							connection = @connections[key] = new Connection endpoint
-							connection.once 'close', =>
-								delete @connections[key]
-							connection.connect ->
-
-						connection.join client
-
-				if channel == @config.id('close')
-					{cell,endpoint} = JSON.parse(message)
-					client = @cells[cell]
-
-					if client
-						key = endpoint_to_key(endpoint)
-						connection = @connections[key]
-
-						if connection
-							connection.leave client
-
-
-			sub.subscribe @config.id('open')
-
-		cell : (cell) ->
-			@cells[cell] ?= new CellClientEx @config, cell
-
-	class Connection extends events.EventEmitter
-		constructor : (@endpoint) ->
-			@trid = 0
-			@trs = {}
-			@clients = []						
-
-		join : (client) ->
-			return if @clients.indexOf(client) >= 0
-
-			client.connection = @
-
-			@clients.push client
-
-			if @net
-				client.init_net()
-
-		leave : (client) ->
-			i = @clients.indexOf(client)
-			return if i < 0
-
-			client.connection = null
-
-			@clients.splice i, 1
-
-		connect : (cb) ->
-			return cb('connected') if @net
-
-			async.series [				
-				(cb) => 
-					@net = net.connect @endpoint, cb
-				(cb) => 	
-					my_carrier = carrier.carry(@net)				
-					my_carrier.on 'line', (data) =>
-						# if destroyed?
-						return unless @net
-
-						[trid,result...] = JSON.parse(data)
-						fn = @trs[trid]
-						delete @trs[trid]
-						fn?.apply null,result
-
-					@net.once 'end', =>
-						@destroy()
-
-					@clients.forEach (c) -> c.init_net()					
-
-					cb()
-			], cb
-
-		purgeAllTransactions : ->
-			trs = @trs
-			@trs = {}
-			for k,v of trs
-				v('disconnected')
-
-		destroy : ->
-			@purgeAllTransactions()
-
-			@clients.forEach (client) =>
-				@leave client
-
-			if @net
-				@net.end()
-				@net = null		
-
-			@emit 'close'
-
-		invoke : (cell,method,args...,cb) ->
-			return cb('cell network not available') unless @net
-
-			trid = @trid++
-			packet = [cell,trid,method,args...]
-			@trs[trid] = cb			
-			
-			@net.write JSON.stringify(packet)
-			@net.write "\r\n"
+	
+	{Membrane} = server.use 'cell/membrane'				
+	{TissueServer,TissueClient} = server.use 'cell/nervtissue'	
 
 	class CellClient
-		constructor : (@config,cell) ->
-			@cell = cell					
+		constructor : (@tissue,@config,@cell) ->			
 			@active = false
 
 		destroy : (cb) ->
@@ -331,6 +69,15 @@ module.exports = (server) ->
 					cb()				
 			], cb
 
+		set_connection : (connection) ->			
+			@connection = connection
+			if connection
+				if connection.is_online()
+					@init_net()				
+				else
+					connection.once 'open', =>
+						@init_net()
+
 		invoke : (method,args...,cb) ->			
 			return cb('cell provider not available') unless @connection
 
@@ -342,22 +89,16 @@ module.exports = (server) ->
 		activate : (cb) ->
 			return cb('invalid') if @active
 			@active = true
-			async.parallel [
-				(cb) => pub.sadd @config.id(@cell,'subs'), server.id, cb
-				(cb) => pub.publish @config.id('sub'), @cell, cb
-			], cb
+			@tissue.activate(@cell,cb)
 
 		deactivate : (cb) ->
 			return cb('invalid') unless @active
 			@active = false
-			async.parallel [
-				(cb) => pub.srem @config.id(@cell,'subs'), server.id, cb
-				(cb) => pub.publish @config.id('unsub'), @cell, cb
-			], cb
+			@tissue.deactivate(@cell,cb)
 
 	class CellClientEx extends CellClient
-		constructor : (@config,cell) ->
-			super @config, cell
+		constructor : (@tissue, @config,cell) ->
+			super @tissue, @config, cell
 
 			@clients = []						
 
@@ -419,9 +160,15 @@ module.exports = (server) ->
 		server : (config,cb) ->
 			config = configify config
 			config.swapout_delay ?= 5000 # default 5 sec
+			config.Membrane = Membrane
 			tissue = new TissueServer config
 			tissue.init cb
-		client : (config) ->
-			new TissueClient configify config
+			tissue
+		client : (config,cb) ->
+			config = configify config
+			config.client_class = CellClientEx 
+			tissue = new TissueClient configify config
+			tissue.init cb
+			tissue
 
 	
