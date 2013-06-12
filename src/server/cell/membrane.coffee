@@ -5,6 +5,10 @@ module.exports = (server) ->
 	server.use 'token'
 	# Membrane wraps CellServer with 'token'.
 	# If membrane lose its token, it handles graceful-shutdown and migration.
+
+	# Membrane should host arbtrary type of cells, including dedicated commercial game engines like UnrealEngine dedicated server.
+	# In that case, cell would provide access point and auth between user and dedicated server.
+
 	# open/release
 	class Membrane extends events.EventEmitter
 		constructor : (@config) ->
@@ -78,5 +82,8 @@ module.exports = (server) ->
 			# if there is a scheduled swap-out, call it to discard.
 			@swappingout?()
 			@swappingout = null		
+
+		invoke : (method,args...,cb) ->
+			@server.invoke method,args...,cb
 
 	Membrane:Membrane

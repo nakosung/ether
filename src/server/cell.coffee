@@ -1,6 +1,7 @@
 _ = require 'underscore'
 async = require 'async'
 events = require 'events'
+assert = require 'assert'
 
 module.exports = (server) ->
 	# cell can be a room in chat service, a zone in mmorpg world, and so on.
@@ -50,105 +51,98 @@ module.exports = (server) ->
 	# rpc.cell.xxx.
 	
 	{Membrane} = server.use 'cell/membrane'				
-	{TissueServer,TissueClient} = server.use 'cell/nervtissue'	
+	{TissueServer,TissueClient,CellClient} = server.use 'cell/nervtissue'		
 
-	class CellClient
-		constructor : (@tissue,@config,@cell) ->			
-			@active = false
-
-		destroy : (cb) ->
-			async.series [
-				(cb) => 
-					if @active
-						@deactivate cb
-					else
-						cb()
-				(cb) =>
-					if @connection
-						@connection.leave(@)
-					cb()				
-			], cb
-
-		set_connection : (connection) ->			
-			@connection = connection
-			if connection
-				if connection.is_online()
-					@init_net()				
-				else
-					connection.once 'open', =>
-						@init_net()
-
-		invoke : (method,args...,cb) ->			
-			return cb('cell provider not available') unless @connection
-
-			@connection.invoke @cell, method, args..., cb
-
-		init_net : ->
-			# called when network become up-and-running
-
-		activate : (cb) ->
-			return cb('invalid') if @active
-			@active = true
-			@tissue.activate(@cell,cb)
-
-		deactivate : (cb) ->
-			return cb('invalid') unless @active
-			@active = false
-			@tissue.deactivate(@cell,cb)
-
-	class CellClientEx extends CellClient
+	# Client-aware cell excluding RPC stuff
+	class CellClientSession extends CellClient
 		constructor : (@tissue, @config,cell) ->
 			super @tissue, @config, cell
 
-			@clients = []						
+			@sessions = {}
+			@numSessions = 0			
 
-			@create_interface()	
-		
+		invoke : (method,session,args...,cb) ->
+			super method, session, args..., cb
+
 		destroy : (cb) ->
-			jobs = @clients.map (c) => (cb) => @leave(c,cb)
+			jobs = []
+			for k,v of @sessions
+				jobs.push (cb) => v.leave(cb)
 			
 			async.series [
 				(cb) => async.parallel jobs, cb
 				(cb) => super cb
 			], cb
 
+		join : (session,cb) ->
+			id = session.id
+			return cb('already open') if @sessions[id] 
+
+			host = @
+
+			class Agent extends events.EventEmitter
+				constructor : (@session) ->					
+					fnSessionCloseHandler = => @leave =>
+
+					# TO ENSURE HARD PAIRING!
+					host.sessions[id] = @
+					@session.once 'close', fnSessionCloseHandler
+
+					if host.numSessions++ == 0
+						host.activate()
+
+					add = -> host.emit 'add', session
+					remove = -> host.emit 'remove', session
+
+					if host.is_online() 
+						add()
+
+					host.on 'online', add
+					host.on 'offline', remove
+
+					@on 'close', =>
+						host.removeListener 'online', add
+						host.removeListener 'offline', remove
+
+						if host.is_online()
+							remove()
+
+						delete host.sessions[id]
+						@session.removeListener 'close', fnSessionCloseHandler
+						if --host.numSessions == 0
+							console.log 'all sessions dropped from cell client'
+							host.deactivate()
+
+				leave : (cb) ->
+					@emit 'close'
+					@removeAllListeners()
+
+			agent = new Agent(session)			
+
+			cb()
+
+	class CellClientEx extends CellClientSession
+		constructor : (@tissue, @config,cell) ->
+			super @tissue, @config, cell
+
+			@create_interface()	
+
+			@on 'add', (client) =>
+				@invoke '+session', client.id, ->
+				@config.user_class::init_client client, @cell, @interface
+
+			@on 'remove', (client) =>
+				@config.user_class::uninit_client client, @cell
+				@invoke '-session', client.id, ->
+
 		create_interface : ->
 			@interface = 
-				close : (client,cb) => @leave client, cb
+				close : (client,cb) => @clients[client.id].leave cb
 
-			_.keys(@config.user_class.prototype).forEach (method) =>				
-				return if ['constructor','destroy','init','client','init_client','uninit_client'].indexOf(method) >= 0
-
+			@config.user_class.prototype.public?.forEach (method) =>
 				@interface[method] = (client,args...) =>
-					@invoke method, @config.user_class::client(client), args...				
+					@invoke method, client.id, args...
 
-		join : (client,cb) ->
-			return cb('already open') if @clients.indexOf(client) >= 0
-
-			@clients.push client
-
-			@config.user_class::init_client client, @cell, @interface
-
-			client.once 'close', => @leave client, =>
-
-			unless @active
-				@activate(cb)
-			else
-				cb()
-
-		leave : (client,cb) ->
-			i = @clients.indexOf(client)
-			return cb('closed') unless i >= 0
-
-			@config.user_class::uninit_client client, @cell
-
-			@clients.splice i,1			
-
-			if @clients.length == 0
-				console.log 'all clients left from cell client'
-				@deactivate(cb)
-			else
-				cb()
 
 	configify = (config) ->
 		o = _.extend {}, config

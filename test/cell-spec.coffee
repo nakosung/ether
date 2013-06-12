@@ -148,13 +148,11 @@ describe 'NervTissue', ->
 		afterEach ->
 			client.shutdown()
 
-		it 'should pass', (done) ->
+		it 'should pass', ->
 			cell_id = 'ABC'
-			cell = client.cell cell_id
-			async.series [
-				(cb) -> client.activate cell_id, cb
-				(cb) -> client.deactivate cell_id, cb
-			], done
+			cell = client.cell cell_id			
+			client.activate cell_id
+			client.deactivate cell_id
 
 		it 'should host a cell during lifecycle', (done) ->
 			cell_id = 'ComplexABC'
@@ -162,14 +160,12 @@ describe 'NervTissue', ->
 
 			server.on 'add', (new_cell) ->				
 				cell_id.should.eql new_cell
-				client.deactivate cell_id, (err) ->					
-					(err == null).should.be.true
+				client.deactivate cell_id
 			server.on 'remove', (removed_cell) ->				
 				cell_id.should.eql removed_cell
 				done()
 
-			client.activate cell_id, (err) ->				
-				(err == null).should.be.true
+			client.activate cell_id
 
 		describe 'multi-client', ->
 			client2 = null
@@ -190,12 +186,10 @@ describe 'NervTissue', ->
 					if alive
 						if c1
 							c1 = false
-							client.deactivate cell_id, (err) ->					
-								(err == null).should.be.true
+							client.deactivate cell_id
 						if c2
 							c2 = false
-							client2.deactivate cell_id, (err) ->					
-								(err == null).should.be.true
+							client2.deactivate cell_id
 
 				server.on 'add', (new_cell) ->				
 					cell_id.should.eql new_cell
@@ -205,11 +199,10 @@ describe 'NervTissue', ->
 					cell_id.should.eql removed_cell
 					done()
 
-				client.activate cell_id, (err) ->				
-					(err == null).should.be.true
-					c1 = true
-					check()
-				client2.activate cell_id, (err) ->				
-					(err == null).should.be.true
-					c2 = true
-					check()
+				client.activate cell_id
+				c1 = true
+				check()
+				
+				client2.activate cell_id
+				c2 = true
+				check()

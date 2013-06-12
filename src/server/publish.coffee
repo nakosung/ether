@@ -1,19 +1,17 @@
 events = require 'events'
 jsondiffpatch = require 'jsondiffpatch'
 _ = require 'underscore'
+assert = require 'assert'
 
 module.exports = (server) ->
 	pubs = {}
 
-	server.use 'deps'	
+	server.use? 'deps'	
 
 	deps = server.deps
 
-	stats =
-		sent:
-			json:0
-
-
+	assert(deps)
+	
 	class Source extends events.EventEmitter
 		constructor : (@fn) ->
 
@@ -86,8 +84,7 @@ module.exports = (server) ->
 						if diff
 							#console.log "diffing", @name, "D".green.bold, curr, old, diff
 							#diff = curr
-							@snapshot = JSON.parse JSON.stringify curr
-							stats.sent.json++
+							@snapshot = JSON.parse JSON.stringify curr							
 							@client.send channel:@name, diff:diff
 							@snapshot.$ = $ if $
 						
@@ -107,10 +104,10 @@ module.exports = (server) ->
 		delete pubs[pub]
 
 	class Client
-		constructor : (@client) ->			
+		constructor : (@client) ->
 			@reqs = {}
 
-			server.on 'client:leave', (client) =>
+			@client.on 'close', (client) =>				
 				if client == @client
 					@destroy()
 
@@ -129,21 +126,21 @@ module.exports = (server) ->
 			name = req.channel
 			@reqs[name]?.destroy()
 			delete @reqs[name]
+
+	server.subscribe = (channel,client) ->
+		client.subs = new Client(client) unless client.subs?
+		client.subs.subscribe channel
+
+	server.unsubscribe = (channel,client) ->
+		client.subs.unsubscribe channel
 	
 	server.on 'client:data', (client,json) ->
 		if json.req
-			client.subs = new Client(client) unless client.subs?
-			client.subs.subscribe json.req
+			server.subscribe json.req, client
 
 		if json.unreq and client.subs			
-			client.subs.unsubscribe json.unreq
+			server.unsubscribe json.req, client
 
 	server.on 'publish:update', (pub) ->
 		pubs[pub]?.emit 'update'
 
-
-	server.publish 'sync:stat', (client) ->
-		deps.read '5sec'
-		stats
-
-	setInterval (-> deps.write '5sec'), 5000

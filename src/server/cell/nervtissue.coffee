@@ -3,6 +3,12 @@ net = require 'net'
 async = require 'async'
 events = require 'events'
 carrier = require 'carrier'
+assert = require 'assert'
+
+# this module deals with 'THE PARTIAL' : server-cell --- {shared connection} --- client-cell
+
+# Whole picture is like below
+# 	Client-aware server-cell --- server-cell --- {shared connection} --- client-cell --- client-aware client-cell
 
 module.exports = (server) ->
 	server.use 'redis'
@@ -128,23 +134,42 @@ module.exports = (server) ->
 		replyToClientUnsub : (cell) ->
 			@membranes[cell]?.unsub()				
 
-		init_net : (cb) ->			
+		init_net : (cb) ->						
 			handler = (c) =>				
 				my_carrier = carrier.carry(c)
-				my_carrier.on 'line', (data) =>
-					[cell,trid,method,args...] = JSON.parse(data)
-					cb = (r...) ->
-						c.write JSON.stringify [trid,r...]
-						c.write "\r\n"
 
-					membrane = @membranes[cell]?.server				
-					unless membrane
-						cb('no such cell here')
-					else 
-						unless membrane[method]
-							cb('no such method')
+				my_carrier.once 'line', (remote_id) =>
+					# provide some remote-local storage
+					remote = remote_id:remote_id					
+
+					cells = {}				
+
+					notifyConnectionClosed = =>					
+						jobs = []
+						for k,v of cells 
+							jobs.push (cb) -> v.invoke '-node', remote, cb
+						async.parallel jobs, ->
+
+					c.on 'close', notifyConnectionClosed
+
+					my_carrier.on 'line', (data) =>
+						[cell,trid,method,args...] = JSON.parse(data)
+						cb = (r...) ->
+							c.write JSON.stringify [trid,r...]
+							c.write "\r\n"
+
+						membrane = @membranes[cell]
+						unless membrane
+							cb('no such cell here')
 						else
-							membrane[method].call membrane, args..., cb
+							async.series [
+								(cb) =>
+									if cells[cell]
+										cb()
+									else
+										membrane.invoke '+node', remote, cb
+								(cb) => membrane.invoke method, remote, args...,cb
+							], cb					
 
 			@net = net.createServer handler		
 			@endpoint = port:8124
@@ -206,24 +231,21 @@ module.exports = (server) ->
 		cell : (cell) ->
 			@cells[cell] ?= new @config.client_class @, @config, cell
 
-		activate : (cell,cb) ->			
-			async.parallel [
-				(cb) => pub.sadd @config.id(cell,'subs'), server.id, cb
-				(cb) => pub.publish @config.id('sub'), cell, cb
-			], cb
+		activate : (cell) ->			
+			pub.sadd @config.id(cell,'subs'), server.id
+			pub.publish @config.id('sub'), cell
 
-		deactivate : (cell,cb) ->			
-			async.parallel [
-				(cb) => pub.srem @config.id(cell,'subs'), server.id, cb
-				(cb) => pub.publish @config.id('unsub'), cell, cb
-			], cb
+		deactivate : (cell) ->						
+			pub.srem @config.id(cell,'subs'), server.id
+			pub.publish @config.id('unsub'), cell
 
 	# Connection is between TissueServer and TissueClient, resides on client.
 	class Connection extends events.EventEmitter
 		constructor : (@endpoint) ->
 			@trid = 0
 			@trs = {}
-			@clients = []						
+			@clients = []				
+			@online = false		
 
 		join : (client) ->
 			return if @clients.indexOf(client) >= 0
@@ -241,12 +263,16 @@ module.exports = (server) ->
 			@clients.splice i, 1
 
 		connect : (cb) ->
-			return cb('connected') if @net
+			return cb('pending connection or already connected') if @net
 
 			async.series [				
 				(cb) => 
 					@net = net.connect @endpoint, cb
-				(cb) => 	
+				(cb) => 
+					@net.write server.id
+					@net.write "\r\n"
+
+					@online = true	
 					my_carrier = carrier.carry(@net)				
 					my_carrier.on 'line', (data) =>
 						# if destroyed?
@@ -258,6 +284,7 @@ module.exports = (server) ->
 						fn?.apply null,result
 
 					@net.once 'end', =>
+						@online = false
 						@destroy()
 
 					@emit 'open'
@@ -284,7 +311,7 @@ module.exports = (server) ->
 			@emit 'close'
 			@removeAllListeners()
 
-		is_online : -> @net?
+		is_online : -> @online
 
 		invoke : (cell,method,args...,cb) ->
 			return cb('cell network not available') unless @net
@@ -296,7 +323,60 @@ module.exports = (server) ->
 			@net.write JSON.stringify(packet)
 			@net.write "\r\n"
 
+	class CellClient extends events.EventEmitter
+		constructor : (@tissue,@config,@cell) ->			
+			@active = false
+			@on 'online', =>
+				@connection.invoke '+cell', @cell, ->
 
+		destroy : (cb) ->
+			@deactivate cb if @active				
+			@connection.leave(@) if @connection				
+			@removeAllListeners()
+			cb()				
+	
+		is_online : ->
+			@connection?.is_online()
+
+		set_connection : (connection) ->
+			return if connection == @connection
+
+			fn = =>
+				if @connection.is_online()
+					@emit 'online'
+				else
+					@emit 'offline'
+
+			if @connection? 
+				old_conn = @connection
+				@connection = null
+				if old_conn.is_online()
+					old_conn.removeListener 'open', fn
+					old_conn.removeListener 'close', fn
+					@emit 'offline'
+			else 
+				@connection = connection
+				connection.on 'open', fn
+				connection.on 'close', fn
+				@emit 'online' if connection.is_online()
+
+		invoke : (method,args...,cb) ->			
+			return cb('cell provider not available') unless @connection
+
+			@connection.invoke @cell, method, args..., cb
+
+		activate : ->
+			console.log 'activate'
+			assert(not @active)
+			@active = true
+			@tissue.activate @cell
+
+		deactivate : ->
+			console.log 'deactivate'
+			assert(@active)
+			@active = false
+			@tissue.deactivate @cell
 
 	TissueServer : TissueServer
 	TissueClient : TissueClient
+	CellClient : CellClient

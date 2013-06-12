@@ -6,6 +6,8 @@ module.exports = (server) ->
 	{cell,deps,rpc} = server
 
 	class CellInstance 
+		public : ['hello']
+		
 		constructor : (@cell) ->	
 			
 		init : (cb) ->
