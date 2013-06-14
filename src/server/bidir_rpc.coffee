@@ -1,3 +1,6 @@
+# This module provides bidirectional RPC on tcp-socket.
+# TODO: support arbtrary stream and furthermore dgrams!!!
+
 events = require 'events'
 carrier = require 'carrier'
 
@@ -35,6 +38,7 @@ module.exports = (c) ->
 		else
 			#console.log '--l-'.bold, data
 			holder.emit 'line', data
+
 	c.on 'close', ->
 		for k,v of trs 
 			v('disconnected')

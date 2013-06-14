@@ -65,7 +65,7 @@ module.exports = (server) ->
 			assert tissueClient
 			session.client tissueClient
 
-			server.publish 'chat', (client) ->
+			server.publish 'chat', (client) ->				
 				deps.read client
 				deps.read client.chat_context.name if client.chat_context?
 				client.chat_context?.data or {}				
@@ -97,10 +97,10 @@ module.exports = (server) ->
 						client.chats[cell.cell] = {}
 						deps.write client						
 	
-	cell.server {}, (tissueServer) ->
+	cell.server {name:'chat'}, (tissueServer) ->
 		logic.server tissueServer
 		console.log 'simple-chat server'.bold
 
-	cell.client {}, (tissueClient) ->
+	cell.client {name:'chat'}, (tissueClient) ->
 		logic.client tissueClient
 		console.log 'simple-chat client'.bold

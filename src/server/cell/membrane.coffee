@@ -5,7 +5,15 @@ assert = require 'assert'
 
 module.exports = (server) ->
 	server.use 'token'
-	# Membrane wraps CellServer with 'token'.
+	# Membrane holds 'cell' with 'token'.
+	# Holding cell is managed by typical node.js style life-cycle.
+	# eg)
+	#		blahblah.on 'cell', (cell) ->
+	#			### your ctor here ###
+	#			cell.on 'close', ->
+	#				### your dtor here ###
+	#			### all of your logic here ###	
+	#
 	# If membrane lose its token, it handles graceful-shutdown and migration.
 
 	# Membrane should host arbtrary type of cells, including dedicated commercial game engines like UnrealEngine dedicated server.

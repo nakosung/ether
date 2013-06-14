@@ -1,3 +1,4 @@
+# collection of some commonly used patterns 
 assert = require 'assert'
 _ = require 'underscore'
 

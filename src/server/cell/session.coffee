@@ -1,3 +1,4 @@
+# add session-support onto cell server/client
 _ = require 'underscore'
 async = require 'async'
 events = require 'events'

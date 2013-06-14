@@ -1,51 +1,10 @@
-module.exports = (server) ->
-	server.use 'deps'
-	server.use 'cell'
-	server.use 'rpc'
+module.exports = (server) ->	
+	server.use 'cell'	
 
-	{cell,deps,rpc} = server
+	{cell} = server
 
-	class CellInstance 
-		public : ['hello']
-		
-		constructor : (@cell) ->	
-			
-		init : (cb) ->
-			console.log 'example cell init', @cell
-			cb()
-		
-		client : (client) ->
-			client.id
-
-		init_client : (client,cell,interfaces) ->
-			client.cells ?= {}
-			client.cells[cell] = interfaces
-			deps.write client
-
-		uninit_client : (client,cell) ->
-			delete client.cells[cell]
-			deps.write client
-
-		destroy : (cb) ->
-			console.log 'destroying this cell', @cell
-			cb()
-
-		hello : (client,msg,cb) ->			
-			cb(null,"hello back #{client}. this is #{@cell}.")	
-	
-	config = 
-		name : 'dumbcell'
-		user_class : CellInstance
-
-	cell.server config, ->
+	cell.server {name:'simple'}, (tissueServer) ->		
 		console.log 'simple-cell server'.bold
 
-	cell_client = cell.client config, ->
+	cell.client {name:'simple'}, (tissueClient) ->		
 		console.log 'simple-cell client'.bold
-	
-	rpc.cell =
-		open : (client,cell,cb) ->			
-			cell_client.cell(cell).join(client,cb)
-
-		__expand__ : (client) ->
-			client.cells
