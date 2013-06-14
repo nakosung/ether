@@ -94,7 +94,7 @@ module.exports = (server) ->
 
 	update = @update = (pub) -> pubs[pub].emit 'update'
 
-	server.publish = @publish = (pub,fn) ->	
+	server.publish = @publish = (pub,fn) ->			
 		s = new Source(fn)
 		s.update = -> update pub
 		pubs[pub] = s
@@ -117,30 +117,28 @@ module.exports = (server) ->
 			@reqs = undefined
 			@client.subs = undefined
 
-		subscribe : (req) ->
-			name = req.channel
+		subscribe : (name) ->						
 			unless @reqs[name]
 				@reqs[name] = new Collection(@client,name)
 
-		unsubscribe : (req) ->
-			name = req.channel
+		unsubscribe : (name) ->			
 			@reqs[name]?.destroy()
 			delete @reqs[name]
 
-	server.subscribe = (channel,client) ->
+	server.subscribe = (client,channel) ->
 		client.subs = new Client(client) unless client.subs?
 		client.subs.subscribe channel
 
-	server.unsubscribe = (channel,client) ->
+	server.unsubscribe = (client,channel) ->
 		client.subs.unsubscribe channel
 	
-	server.on 'client:data', (client,json) ->
+	server.on? 'client:data', (client,json) ->
 		if json.req
-			server.subscribe json.req, client
+			server.subscribe client, json.req.channel
 
 		if json.unreq and client.subs			
-			server.unsubscribe json.req, client
+			server.unsubscribe client, json.unreq.channel
 
-	server.on 'publish:update', (pub) ->
+	server.on? 'publish:update', (pub) ->
 		pubs[pub]?.emit 'update'
 

@@ -40,7 +40,22 @@
 			<span ng-repeat="acc in ['a@a.com','b@b.com']">
 				<button class="btn" ng-show="!!rpc.noauth.register" ng-click="rpc.noauth.register(acc,'1234',{hobby:'playing'})">Register {{acc}}</button>
 				<button class="btn btn-primary" ng-show="!!rpc.noauth.login" ng-click="rpc.noauth.login(acc,'1234')">login {{acc}}</button>
-			</span>								
+			</span>
+			<div>
+				<h3>Chat</h3>				
+				<button class="btn" ng-click="rpc.chat.open('a')">Join A</button>
+				<div ng-repeat="(k,v) in rpc.chat" ng-hide="!v.close">
+					<h4>{{k}}</h4>
+					<div ng-repeat="line in chat.text">
+						{{line}}
+					</div>
+					<button class="btn" ng-click="v.close()">Close</button>
+					<form>
+						<input type="text" ng-model="chatMsg" class="input-medium search-query"></input>
+						<button class="btn btn-primary" ng-click="v.say(chatMsg)">Send</button>
+					</form>
+				</div>				
+			</div>
 		</div>		
 	</div>	
 	<!-- underscore.js -->

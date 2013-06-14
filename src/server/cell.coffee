@@ -51,98 +51,7 @@ module.exports = (server) ->
 	# rpc.cell.xxx.
 	
 	{Membrane} = server.use 'cell/membrane'				
-	{TissueServer,TissueClient,CellClient} = server.use 'cell/nervtissue'		
-
-	# Client-aware cell excluding RPC stuff
-	class CellClientSession extends CellClient
-		constructor : (@tissue, @config,cell) ->
-			super @tissue, @config, cell
-
-			@sessions = {}
-			@numSessions = 0			
-
-		invoke : (method,session,args...,cb) ->
-			super method, session, args..., cb
-
-		destroy : (cb) ->
-			jobs = []
-			for k,v of @sessions
-				jobs.push (cb) => v.leave(cb)
-			
-			async.series [
-				(cb) => async.parallel jobs, cb
-				(cb) => super cb
-			], cb
-
-		join : (session,cb) ->
-			id = session.id
-			return cb('already open') if @sessions[id] 
-
-			host = @
-
-			class Agent extends events.EventEmitter
-				constructor : (@session) ->					
-					fnSessionCloseHandler = => @leave =>
-
-					# TO ENSURE HARD PAIRING!
-					host.sessions[id] = @
-					@session.once 'close', fnSessionCloseHandler
-
-					if host.numSessions++ == 0
-						host.activate()
-
-					add = -> host.emit 'add', session
-					remove = -> host.emit 'remove', session
-
-					if host.is_online() 
-						add()
-
-					host.on 'online', add
-					host.on 'offline', remove
-
-					@on 'close', =>
-						host.removeListener 'online', add
-						host.removeListener 'offline', remove
-
-						if host.is_online()
-							remove()
-
-						delete host.sessions[id]
-						@session.removeListener 'close', fnSessionCloseHandler
-						if --host.numSessions == 0
-							console.log 'all sessions dropped from cell client'
-							host.deactivate()
-
-				leave : (cb) ->
-					@emit 'close'
-					@removeAllListeners()
-
-			agent = new Agent(session)			
-
-			cb()
-
-	class CellClientEx extends CellClientSession
-		constructor : (@tissue, @config,cell) ->
-			super @tissue, @config, cell
-
-			@create_interface()	
-
-			@on 'add', (client) =>
-				@invoke '+session', client.id, ->
-				@config.user_class::init_client client, @cell, @interface
-
-			@on 'remove', (client) =>
-				@config.user_class::uninit_client client, @cell
-				@invoke '-session', client.id, ->
-
-		create_interface : ->
-			@interface = 
-				close : (client,cb) => @clients[client.id].leave cb
-
-			@config.user_class.prototype.public?.forEach (method) =>
-				@interface[method] = (client,args...) =>
-					@invoke method, client.id, args...
-
+	{TissueServer,TissueClient} = server.use 'cell/nervtissue'		
 
 	configify = (config) ->
 		o = _.extend {}, config
@@ -156,13 +65,16 @@ module.exports = (server) ->
 			config.swapout_delay ?= 5000 # default 5 sec
 			config.Membrane = Membrane
 			tissue = new TissueServer config
-			tissue.init cb
-			tissue
+			async.series [
+				(cb) -> tissue.init cb
+				(cb) -> cb(tissue)
+			], cb
 		client : (config,cb) ->
-			config = configify config
-			config.client_class = CellClientEx 
+			config = configify config			
 			tissue = new TissueClient configify config
-			tissue.init cb
-			tissue
+			async.series [
+				(cb) -> tissue.init cb
+				(cb) -> cb(tissue)
+			], cb
 
 	

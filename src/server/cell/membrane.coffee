@@ -1,5 +1,7 @@
 async = require 'async'
 events = require 'events'
+grace = require '../grace'
+assert = require 'assert'
 
 module.exports = (server) ->
 	server.use 'token'
@@ -12,6 +14,10 @@ module.exports = (server) ->
 	# open/release
 	class Membrane extends events.EventEmitter
 		constructor : (@config) ->
+
+		toString : -> 
+			assert(@token)
+			@token
 
 		# public interface
 		open : (cell,cb) ->
@@ -43,24 +49,14 @@ module.exports = (server) ->
 
 		# private interface begins
 		init : (cell,cb) ->			
-			@server = new @config.user_class(cell)			
-			async.series [
-				(cb) => @server.init cb
-				(cb) => 
-					@clients = 0
-					@emit 'open'
-					cb()
-			], cb				
+			@clients = 0			
+			@emit 'open'
+			cb()
 
 		# caution : this function should not be invoked with having token.
 		destroy : (cb) ->
-			@clear_swapout()			
-			async.series [
-				(cb) => @server.destroy(cb)
-				(cb) => 
-					@emit 'close'
-					cb()
-			], cb
+			@clear_swapout()
+			grace.shutdown.call @, cb
 
 		swapout : ->
 			# if already swapout is scheduled, skip it
@@ -82,8 +78,5 @@ module.exports = (server) ->
 			# if there is a scheduled swap-out, call it to discard.
 			@swappingout?()
 			@swappingout = null		
-
-		invoke : (method,args...,cb) ->
-			@server.invoke method,args...,cb
 
 	Membrane:Membrane

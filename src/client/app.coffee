@@ -28,7 +28,7 @@ app.controller 'NavCtrl', ($scope,$location,rpc) ->
 
 
 app.controller 'MainCtrl', ($scope,collection,rpc,autologin,autocol,subscribe,$location) ->	
-	autocol $scope, 'myroom test me sync:stat users_online stats mm rooms mm:stats'	
+	autocol $scope, 'chat myroom test me sync:stat users_online stats mm rooms mm:stats'	
 	$scope.rpc = rpc	
 
 	window.rpc = rpc
