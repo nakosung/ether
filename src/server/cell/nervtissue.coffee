@@ -54,6 +54,10 @@ module.exports = (server) ->
 
 			@membranes = {}			
 
+			@id = @config.id('server',server.id)			
+
+		toString : -> @id
+
 		ready_to_serve : ->
 			@has_enough_capacity_to_serve_more() and not @is_shutting_down
 
@@ -129,7 +133,7 @@ module.exports = (server) ->
 					@emit 'cell', membrane
 					@emit 'add', cell
 					
-				membrane.once 'close', =>
+				membrane.once 'close', =>					
 					delete @membranes[cell]
 					@emit 'remove', cell								
 

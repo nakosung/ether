@@ -42,10 +42,25 @@
 				<button class="btn btn-primary" ng-show="!!rpc.noauth.login" ng-click="rpc.noauth.login(acc,'1234')">login {{acc}}</button>
 			</span>
 			<div>
-				<h3>Chat</h3>				
+				<div>
+					<h3>Cell demo</h3>							
+					<em>Distributed multiple chatting channels, which supports muxed sync between nodes</em>
+					<div class="media" ng-repeat="(cell,cpu) in chat_cluster">
+						<a class="pull-left">
+							<img ng-src="http://files.softicons.com/download/system-icons/web0.2ama-icons-by-chrfb/png/256x256/Network%20-%20Server.png" width=64 height=64>
+						</a>
+						<div class="media-body">
+							<h4 class="media-heading">{{cell}}</h4>
+							hosted on {{cpu}}
+							<button class="btn btn-small btn-warning" ng-click="rpc.celladmin.shutdown(cell)">Shutdown</button>
+						</div>												
+					</div>
+				</div>
 				<button class="btn" ng-click="rpc.chat.open('a')">Join A</button>
+				<button class="btn" ng-click="rpc.chat.open('b')">Join B</button>
+				<button class="btn" ng-click="rpc.chat.open('c')">Join C</button>
 				
-				<div ng-repeat="(k,v) in rpc.chat" ng-hide="!v.close">
+				<div class="span3" ng-repeat="(k,v) in rpc.chat" ng-hide="!v.close">
 					<h4>{{k}}</h4>					
 					<div ng-repeat="line in chat[k].text">
 						{{line}}

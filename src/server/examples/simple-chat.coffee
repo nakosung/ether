@@ -3,6 +3,7 @@ async = require 'async'
 session = require '../cell/session'
 assert = require 'assert'
 jsondiffpatch = require 'jsondiffpatch'
+stats = require '../cell/stats'
 
 module.exports = (server) ->
 	server.use 'deps'
@@ -16,6 +17,7 @@ module.exports = (server) ->
 		server : (tissueServer) ->
 			assert tissueServer
 			session.server tissueServer
+			stats.server tissueServer, server
 
 			tissueServer.on 'cell', (cell) ->
 				class Publisher
@@ -64,6 +66,7 @@ module.exports = (server) ->
 		client : (tissueClient) ->
 			assert tissueClient
 			session.client tissueClient
+			stats.client tissueClient, server
 
 			pubname = (k) -> 'chatpub:'+k
 
