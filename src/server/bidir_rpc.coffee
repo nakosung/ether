@@ -34,7 +34,7 @@ module.exports = (c) ->
 				c.write "<"
 				c.write JSON.stringify [trid,r...]
 				c.write "\r\n"
-			holder.emit 'invoke', args..., cb
+			cb('no handler for rpc present') unless holder.emit 'invoke', args..., cb
 		else
 			#console.log '--l-'.bold, data
 			holder.emit 'line', data

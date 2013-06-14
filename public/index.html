@@ -44,10 +44,10 @@
 			<div>
 				<h3>Chat</h3>				
 				<button class="btn" ng-click="rpc.chat.open('a')">Join A</button>
-				{{chat}}
+				
 				<div ng-repeat="(k,v) in rpc.chat" ng-hide="!v.close">
-					<h4>{{k}}</h4>
-					<div ng-repeat="line in chat.text">
+					<h4>{{k}}</h4>					
+					<div ng-repeat="line in chat[k].text">
 						{{line}}
 					</div>
 					<button class="btn" ng-click="v.close()">Close</button>
