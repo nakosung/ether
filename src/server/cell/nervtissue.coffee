@@ -1,3 +1,5 @@
+# TODO : replace sub/pub of cell req with redis counter.
+
 _ = require 'underscore'
 net = require 'net'
 async = require 'async'
@@ -186,6 +188,8 @@ module.exports = (server) ->
 							remote = cells[cell]
 							unless remote
 								remote = cells[cell] = new Node cell, remote_id
+								membrane.once 'close', ->
+									bi.invoke cell, '-cell', ->
 								membrane.emit 'node', remote
 							#console.log 'INVOKE'.bold, method, args...
 							remote.invoke args..., cb
@@ -299,7 +303,10 @@ module.exports = (server) ->
 						cell = @clients[cell]
 						return cb('no such cell here') unless cell
 
-						cell.invoke args..., cb						
+						if args[0] == '-cell'
+							@leave(cell,cb)
+						else
+							cell.invoke args..., cb						
 
 					@net.once 'end', =>
 						@bi = null

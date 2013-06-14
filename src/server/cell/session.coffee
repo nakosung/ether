@@ -87,7 +87,7 @@ module.exports =
 						add = => 
 							@emit 'online', @
 							cell.invoke_remote '+session', id, ->
-						remove = => 
+						remove = =>
 							cell.invoke_remote '-session', id, ->
 							@emit 'offline', @
 						
